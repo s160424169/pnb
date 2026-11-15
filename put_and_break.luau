@@ -6,13 +6,13 @@
 --        Filter Suara Alami (Bungkam Suara Besi/Bedrock & Play Suara Put Balok), Anti-Staff Guard
 -- =========================================================================
 
-local set_id = (setthreadidentity or setidentity or function(_) end) :: any
+local set_id = (setthreadidentity or setidentity or function(_) end)
 local function elevate()
     pcall(set_id, 8)
 end
 elevate()
 
-local genv = getgenv() :: any
+local genv = getgenv()
 if genv.PnB_Cleanup then
     pcall(genv.PnB_Cleanup)
 elseif shared.PnB_Cleanup then
@@ -26,16 +26,23 @@ local TextChatService = game:GetService("TextChatService")
 local VirtualUser = game:GetService("VirtualUser")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 
-local function sendKeySafe(key: Enum.KeyCode, isDown: boolean)
+local function sendKeySafe(key, isDown)
     elevate()
     pcall(function()
         VirtualInputManager:SendKeyEvent(isDown, key, false, game)
     end)
 end
-local lp = Players.LocalPlayer or Players:GetPlayers()[1]
+local lp = Players.LocalPlayer
+if not lp then
+    repeat
+        task.wait(0.1)
+        lp = Players.LocalPlayer
+    until lp or #Players:GetPlayers() > 0
+    lp = lp or Players:GetPlayers()[1]
+end
 
-local r = require :: any
-local getconns = (getconnections :: any)
+local r = require
+local getconns = (getconnections)
 
 -- =========================================================================
 -- 🛡️ BULLETPROOF ANTI-AFK & AUTO-RECONNECT ENGINE (100% UNBEATABLE)
@@ -126,9 +133,9 @@ if not genv.PnB_WorldKeepAlive then
     end)
 end
 
-local WorldRemotes = ReplicatedStorage:FindFirstChild("WorldRemotes") :: any
+local WorldRemotes = ReplicatedStorage:FindFirstChild("WorldRemotes")
 
-local function findWorldFromAnySource(): any
+local function findWorldFromAnySource()
     if getgc then
         local ok, gcList = pcall(getgc, true)
         if ok and type(gcList) == "table" then
@@ -198,7 +205,7 @@ if World then
     World.placedAt = {fg = dummyFg, bg = dummyBg}
 end
 
-local invUI: any = nil
+local invUI = nil
 local okInv, invModule = pcall(function()
     local pg = lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui", 5)
     local gg = pg and (pg:FindFirstChild("GameGui") or pg:WaitForChild("GameGui", 5))
@@ -208,7 +215,7 @@ if okInv and invModule then
     pcall(function() invUI = r(invModule) end)
 end
 
-local backpack: any = nil
+local backpack = nil
 local function refreshBackpackReference()
     elevate()
     -- Source 1: plantSeed in getgc(false) (Direct live backpack in GrowBlox v1210)
@@ -262,14 +269,14 @@ end
 refreshBackpackReference()
 
 -- 🛡️ UNIVERSAL MODULE RESOLVER (100% Kebal Obfuscasi & Unparenting Shared)
-local ItemDB: any = nil
-local ItemIcon: any = nil
-local Sfx: any = nil
-local Roles: any = nil
-local AreaLock: any = nil
-local Net: any = nil
+local ItemDB = nil
+local ItemIcon = nil
+local Sfx = nil
+local Roles = nil
+local AreaLock = nil
+local Net = nil
 
-local function ensureItemDB(): any
+local function ensureItemDB()
     if ItemDB and rawget(ItemDB, 2) then return ItemDB end
 
     -- Source 1: getgc(false) closure search (turning, set, pop - ultra fast < 3ms)
@@ -366,7 +373,7 @@ local function ensureItemDB(): any
     return ItemDB
 end
 
-local function ensureItemIcon(): any
+local function ensureItemIcon()
     if ItemIcon and type(ItemIcon.new) == "function" then return ItemIcon end
 
     -- Source 1: plantSeed in getgc(false) (Direct & Instant in GrowBlox v1210)
@@ -449,7 +456,7 @@ local function ensureItemIcon(): any
     return ItemIcon
 end
 
-local function ensureNet(): any
+local function ensureNet()
     if Net and rawget(Net, "drop") then return Net end
     if getgc then
         local ok, gcList = pcall(getgc, true)
@@ -600,13 +607,13 @@ pcall(function()
 end)
 
 -- 🛡️ Zero Packet Teleport / Pure Stealth: sendServerPos dinonaktifkan total agar posisi karakter 100% natural
-local function sendServerPos(nx: number, ny: number)
+local function sendServerPos(nx, ny)
     -- Disabled demi keamanan (Anti-Teleport / Anti-Flicker)
 end
 
 -- 🛡️ Permission, Lock, & Staff Boundary Helpers (Anti-Kick & Anti-Grief)
 -- Mendukung World Owner, Public World, serta Admin / Member dengan akses lock
-local function canBuildAt(tx: number, ty: number): boolean
+local function canBuildAt(tx, ty)
     if not World then return false end
     if tx < 0 or tx >= (World.w or 100) or ty < 0 or ty >= (World.h or 60) then
         return false
@@ -656,11 +663,11 @@ local function canBuildAt(tx: number, ty: number): boolean
     return true
 end
 
-local function canPunchAt(tx: number, ty: number): boolean
+local function canPunchAt(tx, ty)
     return canBuildAt(tx, ty)
 end
 
-local function isStaffMember(p: any): boolean
+local function isStaffMember(p)
     if not p then return false end
     local uid = p.UserId
     if not uid then return false end
@@ -708,16 +715,16 @@ local function checkAnyStaffPresent(): (boolean, string?)
 end
 
 -- ⚡ Ekstraksi fungsi engine langsung secara dinamis (Anti-Shift / Self-Healing)
-local hitFn: any
-local setTileFn: any
-local updateDropsFn: any
-local dropsTable: any
-local TileSize: number = 64
-local Frame: any
-local gemAnims: any
-local flyToBackpack: any
-local gm: any
-local setDropCount: any
+local hitFn
+local setTileFn
+local updateDropsFn
+local dropsTable
+local TileSize = 64
+local Frame
+local gemAnims
+local flyToBackpack
+local gm
+local setDropCount
 
 -- 💎 Ekstraksi dropsTable resmi langsung dari World.dropList (100% akurat & anti-shift)
 if World and World.dropList then
@@ -756,7 +763,7 @@ end
 
 -- Method B: Scan RenderStepped connections (100% kebal nama modul)
 local renderConns = getconns(RunService.RenderStepped)
-local gameStepFn: any
+local gameStepFn
 for _, c in ipairs(renderConns) do
     local f = c.Function
     if f and typeof(f) == "function" then
@@ -840,8 +847,8 @@ if not setTileFn then
 end
 
 local state = {
-    selectedBlockId = nil :: number?,
-    selectedBlockName = nil :: string?,
+    selectedBlockId = nil,
+    selectedBlockName = nil,
     autoPnB = false,
     autoClaim = false,
     direction = "Kanan",
@@ -849,30 +856,30 @@ local state = {
     customTiles = {
         ["1,0"] = true,
         ["1,-1"] = true
-    } :: {[string]: boolean},
+    },
     offsetY = 0,
     placeDelay = 0.16,
     punchDelay = 0.14, -- Kecepatan pukul default: responsif & aman (140ms)
     maxCollectRange = 1.85, -- Radius 1-Blok Presisi (Kiri, Kanan, Atas Kepala, Diagonal 1-Blok, 2-Blok Ditolak)
-    seedDropPos = nil :: {x: number, y: number}?,
-    targetSeedId = nil :: number?,
+    seedDropPos = nil,
+    targetSeedId = nil,
     seedDropThreshold = 195,
     nextDropAttempt = 0,
-    standPos = nil :: {x: number, y: number}?,
-    stockPos = nil :: {x: number, y: number}?,
-    doorPos = nil :: {x: number, y: number}?,
+    standPos = nil,
+    stockPos = nil,
+    doorPos = nil,
     isRelocating = false,
     isRejoining = false,
-    pnbThread = nil :: thread?,
-    claimThread = nil :: thread?,
-    rejoinThread = nil :: thread?,
-    savedWorldName = nil :: string?,
-    autoRejoinWorld = true :: boolean,
-    wasRunningBeforeDisconnect = false :: boolean,
-    resumePnBOnRejoin = false :: boolean,
-    walkTo = nil :: any,
-    startWorker = nil :: any,
-    connections = {} :: {any}
+    pnbThread = nil,
+    claimThread = nil,
+    rejoinThread = nil,
+    savedWorldName = nil,
+    autoRejoinWorld = true,
+    wasRunningBeforeDisconnect = false,
+    resumePnBOnRejoin = false,
+    walkTo = nil,
+    startWorker = nil,
+    connections = {}
 }
 
 -- Integrasi kompatibilitas global dengan setup script teman (AutoBreakCustom)
@@ -884,11 +891,11 @@ if genv.AutoBreakCustom.StockPos then state.stockPos = genv.AutoBreakCustom.Stoc
 if genv.AutoBreakCustom.DoorPos then state.doorPos = genv.AutoBreakCustom.DoorPos end
 
 -- 🌍 Resolusi Fungsi Navigasi World (enterWorld, currentWorld, warp)
-local currentWorldFn: any = nil
-local enterWorldFn: any = nil
-local warpFn: any = nil
+local currentWorldFn = nil
+local enterWorldFn = nil
+local warpFn = nil
 
-local enterFn: any = nil
+local enterFn = nil
 
 local function resolveWorldNavFunctions()
     if currentWorldFn and (enterWorldFn or warpFn or enterFn) then return end
@@ -914,7 +921,7 @@ local function resolveWorldNavFunctions()
 end
 resolveWorldNavFunctions()
 
-local function getCurrentWorldName(): string?
+local function getCurrentWorldName()
     resolveWorldNavFunctions()
     if currentWorldFn then
         local ok, w = pcall(currentWorldFn)
@@ -924,7 +931,7 @@ local function getCurrentWorldName(): string?
     return state.savedWorldName
 end
 
-local function isPlayerCurrentlyInTargetWorld(targetWorld: string?): boolean
+local function isPlayerCurrentlyInTargetWorld(targetWorld)
     if not targetWorld or #targetWorld == 0 then return false end
     -- 1. Cek MenuGui / GameGui visibility
     local pGui = lp:FindFirstChild("PlayerGui")
@@ -950,7 +957,7 @@ local function isPlayerCurrentlyInTargetWorld(targetWorld: string?): boolean
     return string.upper(wName) == string.upper(targetWorld)
 end
 
-local function attemptWarpWorld(targetWorld: string)
+local function attemptWarpWorld(targetWorld)
     if not targetWorld or #targetWorld == 0 then return end
     elevate()
     resolveWorldNavFunctions()
@@ -1063,14 +1070,14 @@ elseif genv.PnB_SavedWorld then
 end
 
 -- Forward declaration fungsi watchdog rejoin
-local startRejoinWatchdog: any = nil
+local startRejoinWatchdog = nil
 
 -- Expose global state for diagnostics and control
 genv.PnB_State = state
 shared.PnB_State = state
 _G.PnB_State = state
 
-local function findMatchingSeedId(blockId: number): number?
+local function findMatchingSeedId(blockId)
     if not ItemDB or not ItemDB[blockId] then return nil end
     local rawName = ItemDB[blockId].name or ""
     local cleanName = string.lower((string.gsub(rawName, "`(%S)", "")))
@@ -1088,7 +1095,7 @@ local function findMatchingSeedId(blockId: number): number?
     return nil
 end
 
-local function walkToTile(targetX: number, targetY: number?, timeoutSec: number?): boolean
+local function walkToTile(targetX, targetY, timeoutSec)
     local maxTime = os.clock() + (timeoutSec or 8.0)
     local targetSafeX = targetX + 0.50
     elevate()
@@ -1160,7 +1167,7 @@ local function walkToTile(targetX: number, targetY: number?, timeoutSec: number?
     return math.abs(targetSafeX - finalX) <= 0.45
 end
 
-local function getItemLayer(id: number): string
+local function getItemLayer(id)
     ensureItemDB()
     local item = ItemDB and ItemDB[id]
     if item and item.background then
@@ -1169,7 +1176,7 @@ local function getItemLayer(id: number): string
     return "fg"
 end
 
-local function isPlaceableFarmableItem(itemId: number): boolean
+local function isPlaceableFarmableItem(itemId)
     if not itemId or itemId == 18 or itemId == 32 then return false end
     ensureItemDB()
     if not ItemDB then return false end
@@ -1193,7 +1200,7 @@ local function isPlaceableFarmableItem(itemId: number): boolean
     return false
 end
 
-local function removeColorAndSymbols(str: string)
+local function removeColorAndSymbols(str)
     if not str then return "" end
     local s = string.gsub(str, "`(%S)", "")
     s = string.gsub(s, "Dr%.%s*", "")
@@ -1204,36 +1211,36 @@ local function removeColorAndSymbols(str: string)
     return s
 end
 
-local function sendChat(text: string)
+local function sendChat(text)
     elevate()
-    local tcs = TextChatService :: any
+    local tcs = TextChatService
     local channel = tcs:FindFirstChild("TextChannels") and tcs.TextChannels:FindFirstChild("RBXGeneral")
     if channel then
         pcall(function() channel:SendAsync(text) end)
     end
 end
 
-local pickerModal: any = nil
-local searchBox: any = nil
-local populateBlockPicker: any = nil
-local updatePickButton: any = nil
-local updateStatusLabel: any = nil
-local updatePnBButton: any = nil
-local updateClaimButton: any = nil
-local seedIdInput: any = nil
-local seedXInput: any = nil
-local seedYInput: any = nil
-local standXInput: any = nil
-local standYInput: any = nil
-local stockXInput: any = nil
-local stockYInput: any = nil
-local updateSeedUI: any = nil
-local updatePosUI: any = nil
+local pickerModal = nil
+local searchBox = nil
+local populateBlockPicker = nil
+local updatePickButton = nil
+local updateStatusLabel = nil
+local updatePnBButton = nil
+local updateClaimButton = nil
+local seedIdInput = nil
+local seedXInput = nil
+local seedYInput = nil
+local standXInput = nil
+local standYInput = nil
+local stockXInput = nil
+local stockYInput = nil
+local updateSeedUI = nil
+local updatePosUI = nil
 
 -- =========================================================================
 -- ⚡ ULTRA CLEAN DROP COLLECTION (100% Native - ZERO Teleport & ZERO Glitch)
 -- =========================================================================
-local function collectDropSync(u13: any): boolean
+local function collectDropSync(u13)
     if not u13 or type(u13.uid) ~= "number" or u13.n <= 0 then return false end
     if u13.taking and (type(u13.taking) ~= "number" or (os.clock() - u13.taking) < 1.0) then return false end
     if u13.failedUntil and os.clock() < u13.failedUntil then return false end
@@ -1463,7 +1470,7 @@ local function startClaimWorker()
     end)
 end
 
-local function checkCaptchaClaim(rawText: string)
+local function checkCaptchaClaim(rawText)
     if not state.autoClaim or not rawText or type(rawText) ~= "string" then return end
     local match = string.match(rawText, "/claim%s+([%w%d%p]+)") or string.match(rawText, "claim%s+([%w%d%p]+)")
     if match then
@@ -1487,8 +1494,8 @@ if WorldRemotes and WorldRemotes:FindFirstChild("WorldNotice") then
     table.insert(state.connections, noticeConn)
 end
 
-if (TextChatService :: any):FindFirstChild("MessageReceived") then
-    local chatConn = (TextChatService :: any).MessageReceived:Connect(function(textChatMessage: any)
+if TextChatService:FindFirstChild("MessageReceived") then
+    local chatConn = TextChatService.MessageReceived:Connect(function(textChatMessage)
         elevate()
         if textChatMessage and textChatMessage.Text then
             checkCaptchaClaim(textChatMessage.Text)
@@ -1589,7 +1596,7 @@ if WorldRemotes and WorldRemotes:FindFirstChild("LeaveWorld") then
     table.insert(state.connections, lwConn)
 end
 
-local function placeTile(tx: number, ty: number, blockId: number): boolean
+local function placeTile(tx, ty, blockId)
     if not state.autoPnB or not blockId then return false end
     local bp = refreshBackpackReference()
     if not bp or bp:count(blockId) <= 0 then return false end
@@ -1623,7 +1630,7 @@ local function placeTile(tx: number, ty: number, blockId: number): boolean
     return placedTile == blockId
 end
 
-local function placeTileFast(tx: number, ty: number, blockId: number): boolean
+local function placeTileFast(tx, ty, blockId)
     if not state.autoPnB or not blockId then return false end
     local bp = refreshBackpackReference()
     if not bp or bp:count(blockId) <= 0 then return false end
@@ -1651,7 +1658,7 @@ local function placeTileFast(tx: number, ty: number, blockId: number): boolean
     return true
 end
 
-local function breakTile(tx: number, ty: number, blockId: number?)
+local function breakTile(tx, ty, blockId)
     if not state.autoPnB then return end
     elevate()
 
@@ -1692,7 +1699,7 @@ local function breakTile(tx: number, ty: number, blockId: number?)
     task.wait(0.02)
 end
 
-local function getNativePutDown(): any
+local function getNativePutDown()
     if getgc then
         local okF, fns = pcall(getgc, false)
         if okF and type(fns) == "table" then
@@ -1706,7 +1713,7 @@ local function getNativePutDown(): any
     return nil
 end
 
-local function performDrop(id: number, count: number, targetX: number, targetY: number): boolean
+local function performDrop(id, count, targetX, targetY)
     local dropAmount = math.min(count, 200)
     if dropAmount <= 0 then return false end
 
@@ -2548,11 +2555,29 @@ state.rejoinWatchdog = startRejoinWatchdog
 -- 🖥️ USER INTERFACE (GUI)
 -- =========================================================================
 
-local uiParent = lp:WaitForChild("PlayerGui")
-local old = uiParent:FindFirstChild("PlantAndBreakGUI")
-if old then old:Destroy() end
+local sg = nil
+local function buildGUI()
+local uiParent = nil
+local okHui, hui = pcall(function() return gethui() end)
+if okHui and hui then
+    uiParent = hui
+else
+    local okCore, core = pcall(function() return game:GetService("CoreGui") end)
+    if okCore and core then
+        uiParent = core
+    else
+        uiParent = (lp and lp:FindFirstChild("PlayerGui")) or (lp and lp:WaitForChild("PlayerGui", 5))
+    end
+end
 
-local sg = Instance.new("ScreenGui")
+for _, p in ipairs({ uiParent, pcall(function() return game:GetService("CoreGui") end) and game:GetService("CoreGui"), lp and lp:FindFirstChild("PlayerGui") }) do
+    if typeof(p) == "Instance" then
+        local old = p:FindFirstChild("PlantAndBreakGUI")
+        if old then pcall(function() old:Destroy() end) end
+    end
+end
+
+sg = Instance.new("ScreenGui")
 sg.Name = "PlantAndBreakGUI"
 sg.ResetOnSpawn = false
 sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -2666,7 +2691,7 @@ statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.BackgroundTransparency = 1
 statusLabel.Parent = mainFrame
 
-updateStatusLabel = function(text: string)
+updateStatusLabel = function(text)
     if statusLabel and statusLabel.Parent then
         statusLabel.Text = text
     end
@@ -2898,7 +2923,7 @@ grid.SortOrder = Enum.SortOrder.LayoutOrder
 grid.Padding = UDim.new(0, 4)
 grid.Parent = scroll
 
-populateBlockPicker = function(query: string?)
+populateBlockPicker = function(query)
     elevate()
     ensureItemDB()
     ensureItemIcon()
@@ -2934,7 +2959,7 @@ populateBlockPicker = function(query: string?)
     local candidateList = {}
     local addedIds = {}
 
-    local function addCandidate(id: number, inBagCount: number, fromDB: boolean)
+    local function addCandidate(id, inBagCount, fromDB)
         if not id or addedIds[id] then return end
         if not isPlaceableFarmableItem(id) then return end
         local it = ItemDB and ItemDB[id]
@@ -3281,7 +3306,7 @@ local dirCorner = Instance.new("UICorner")
 dirCorner.CornerRadius = UDim.new(0, 6)
 dirCorner.Parent = dirBtn
 
-local refreshMatrixUI: any = nil
+local refreshMatrixUI = nil
 
 local PNB_MODES = {
     "1-Tile",
@@ -3380,8 +3405,8 @@ mStroke.Color = Color3.fromRGB(52, 56, 70)
 mStroke.Thickness = 1.2
 mStroke.Parent = matrixContainer
 
-local cellButtons: {[string]: any} = {}
-local cellDefaultLabels: {[string]: string} = {
+local cellButtons = {}
+local cellDefaultLabels = {
     ["-1,-2"] = "Kiri\nAtas",
     ["0,-2"]  = "Tengah\nAtas",
     ["1,-2"]  = "Kanan\nAtas",
@@ -3416,7 +3441,7 @@ refreshMatrixUI = function()
     end
 end
 
-local function createTileButton(key: string, pos: UDim2, size: UDim2)
+local function createTileButton(key, pos, size)
     local btn = Instance.new("TextButton")
     btn.Name = "Tile_" .. key
     btn.Position = pos
@@ -3476,7 +3501,7 @@ presetFrame.Position = UDim2.fromOffset(12, 354)
 presetFrame.BackgroundTransparency = 1
 presetFrame.Parent = scrollFrame
 
-local function createPresetButton(name: string, xOffset: number, width: number, onClick: () -> ())
+local function createPresetButton(name, xOffset, width, onClick)
     local pBtn = Instance.new("TextButton")
     pBtn.Name = "Preset_" .. name
     pBtn.Size = UDim2.fromOffset(width, 28)
@@ -3581,7 +3606,7 @@ spRow1.BackgroundTransparency = 1
 
 local updateSpeedLabel: (() -> ())? = nil
 
-local function createSpeedPreset(txt: string, val: number, xPos: number, width: number)
+local function createSpeedPreset(txt, val, xPos, width)
     local btn = Instance.new("TextButton", spRow1)
     btn.Size = UDim2.fromOffset(width, 20)
     btn.Position = UDim2.fromOffset(xPos, 0)
@@ -3659,6 +3684,7 @@ spPlus.MouseButton1Click:Connect(function()
     if updateSpeedLabel then updateSpeedLabel() end
 end)
 
+do
 -- ================== FITUR AUTO DROP SEED ==================
 local seedDropFrame = Instance.new("Frame")
 seedDropFrame.Name = "SeedDropFrame"
@@ -3789,6 +3815,8 @@ end
 seedXInput.FocusLost:Connect(applyManualSeed)
 seedYInput.FocusLost:Connect(applyManualSeed)
 
+end
+do
 -- ================== FITUR AUTO RESTOCK & DOOR POS ==================
 local restockFrame = Instance.new("Frame")
 restockFrame.Name = "RestockFrame"
@@ -4017,6 +4045,8 @@ end
 doorXInput.FocusLost:Connect(applyManualDoor)
 doorYInput.FocusLost:Connect(applyManualDoor)
 
+end
+do
 -- ================== FITUR AUTO REJOIN & RESUME WORLD ==================
 local rejoinFrame = Instance.new("Frame")
 rejoinFrame.Name = "RejoinFrame"
@@ -4097,9 +4127,12 @@ bottomSpacer.Position = UDim2.fromOffset(12, 704)
 bottomSpacer.BackgroundTransparency = 1
 bottomSpacer.Parent = scrollFrame
 
+end
+end
+buildGUI()
 -- Action helpers untuk testing dan integrasi programmatic
 genv.PnB_Actions = {
-    selectBlock = function(id: number)
+    selectBlock = function(id)
         local meta = ItemDB[id]
         if meta then
             state.selectedBlockId = id
@@ -4109,7 +4142,7 @@ genv.PnB_Actions = {
         end
         return false
     end,
-    setMode = function(m: string)
+    setMode = function(m)
         if m == "1-Tile" or m == "2-Far" or m == "3-Block" or m == "6-Block" or m == "Custom" or m == "Custom (1-Blok)" then
             state.mode = m
             if applyModePreset then applyModePreset() end
@@ -4119,7 +4152,7 @@ genv.PnB_Actions = {
         end
         return false
     end,
-    setDirection = function(d: string)
+    setDirection = function(d)
         if d == "Kanan" or d == "Kiri" then
             state.direction = d
             if dirBtn then dirBtn.Text = (d == "Kanan") and "Arah: Kanan ▶" or "Arah: ◀ Kiri" end
@@ -4127,7 +4160,7 @@ genv.PnB_Actions = {
         end
         return false
     end,
-    setCustomTile = function(dx: number, dy: number, enabled: boolean)
+    setCustomTile = function(dx, dy, enabled)
         local key = dx .. "," .. dy
         if enabled then
             state.customTiles[key] = true
@@ -4137,7 +4170,7 @@ genv.PnB_Actions = {
         refreshMatrixUI()
         return true
     end,
-    applyPreset = function(name: string)
+    applyPreset = function(name)
         if name == "Kanan" then
             table.clear(state.customTiles)
             state.customTiles["1,0"] = true
@@ -4192,7 +4225,7 @@ genv.PnB_Actions = {
         return state.customTiles
     end,
     refreshMatrix = refreshMatrixUI,
-    toggleClaim = function(on: boolean?)
+    toggleClaim = function(on)
         if on == nil then
             state.autoClaim = not state.autoClaim
         else
@@ -4208,7 +4241,7 @@ genv.PnB_Actions = {
         end
         return state.autoClaim
     end,
-    togglePnB = function(on: boolean?)
+    togglePnB = function(on)
         if on == nil then
             state.autoPnB = not state.autoPnB
         else
@@ -4226,26 +4259,26 @@ genv.PnB_Actions = {
         end
         return state.autoPnB
     end,
-    setSeedDropPos = function(x: number, y: number)
+    setSeedDropPos = function(x, y)
         state.seedDropPos = {x = x, y = y}
         if genv.AutoBreakCustom then genv.AutoBreakCustom.SeedDropPos = state.seedDropPos end
         if updateSeedUI then updateSeedUI() end
         return true
     end,
-    setTargetSeed = function(id: number)
+    setTargetSeed = function(id)
         state.targetSeedId = id
         if genv.AutoBreakCustom then genv.AutoBreakCustom.TargetSeedID = tostring(id) end
         if seedIdInput then seedIdInput.Text = tostring(id) end
         if updateSeedUI then updateSeedUI() end
         return true
     end,
-    setStandPos = function(x: number, y: number)
+    setStandPos = function(x, y)
         state.standPos = {x = x, y = y}
         if genv.AutoBreakCustom then genv.AutoBreakCustom.StandPos = state.standPos end
         if updatePosUI then updatePosUI() end
         return true
     end,
-    setStockPos = function(x: number, y: number)
+    setStockPos = function(x, y)
         state.stockPos = {x = x, y = y}
         if genv.AutoBreakCustom then genv.AutoBreakCustom.StockPos = state.stockPos end
         if updatePosUI then updatePosUI() end
@@ -4303,3 +4336,5 @@ if state.autoRejoinWorld and startRejoinWatchdog then
 end
 
 print("[PnB] Put and Break & Auto Claim (Pro V7.1 - Clean & Pure Engine) siap digunakan!")
+
+
