@@ -1,4 +1,4 @@
--- =========================================================================
+﻿-- =========================================================================
 -- 🧱 PUT & BREAK (PnB) & AUTO CLAIM SCRIPT (PRO V7.1 - CLEAN & PURE ENGINE)
 -- Game: Growblox (Place ID: 112863874972771)
 -- Fitur: Auto Put & Break (1-Tile & 2-Far), 100% Native Drop Collection (Zero-Teleport / Zero-Jitter),
@@ -6,13 +6,13 @@
 --        Filter Suara Alami (Bungkam Suara Besi/Bedrock & Play Suara Put Balok), Anti-Staff Guard
 -- =========================================================================
 
-local set_id = (setthreadidentity or setidentity or function(_) end) :: any
+local set_id = (setthreadidentity or setidentity or function(_) end)
 local function elevate()
     pcall(set_id, 8)
 end
 elevate()
 
-local genv = getgenv() :: any
+local genv = getgenv()
 if genv.PnB_Cleanup then
     pcall(genv.PnB_Cleanup)
 elseif shared.PnB_Cleanup then
@@ -26,7 +26,7 @@ local TextChatService = game:GetService("TextChatService")
 local VirtualUser = game:GetService("VirtualUser")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 
-local function sendKeySafe(key: Enum.KeyCode, isDown: boolean)
+local function sendKeySafe(key, isDown)
     elevate()
     pcall(function()
         VirtualInputManager:SendKeyEvent(isDown, key, false, game)
@@ -41,8 +41,8 @@ if not lp then
     lp = lp or Players:GetPlayers()[1]
 end
 
-local r = require :: any
-local getconns = (getconnections :: any)
+local r = require
+local getconns = (getconnections)
 
 -- =========================================================================
 -- 🛡️ BULLETPROOF ANTI-AFK & AUTO-RECONNECT ENGINE (100% UNBEATABLE)
@@ -133,9 +133,9 @@ if not genv.PnB_WorldKeepAlive then
     end)
 end
 
-local WorldRemotes = ReplicatedStorage:FindFirstChild("WorldRemotes") :: any
+local WorldRemotes = ReplicatedStorage:FindFirstChild("WorldRemotes")
 
-local function findWorldFromAnySource(): any
+local function findWorldFromAnySource()
     if getgc then
         local ok, gcList = pcall(getgc, true)
         if ok and type(gcList) == "table" then
@@ -276,7 +276,7 @@ local Roles: any = nil
 local AreaLock: any = nil
 local Net: any = nil
 
-local function ensureItemDB(): any
+local function ensureItemDB()
     if ItemDB and rawget(ItemDB, 2) then return ItemDB end
 
     -- Source 1: getgc(false) closure search (turning, set, pop - ultra fast < 3ms)
@@ -373,7 +373,7 @@ local function ensureItemDB(): any
     return ItemDB
 end
 
-local function ensureItemIcon(): any
+local function ensureItemIcon()
     if ItemIcon and type(ItemIcon.new) == "function" then return ItemIcon end
 
     -- Source 1: plantSeed in getgc(false) (Direct & Instant in GrowBlox v1210)
@@ -456,7 +456,7 @@ local function ensureItemIcon(): any
     return ItemIcon
 end
 
-local function ensureNet(): any
+local function ensureNet()
     if Net and rawget(Net, "drop") then return Net end
     if getgc then
         local ok, gcList = pcall(getgc, true)
@@ -607,13 +607,13 @@ pcall(function()
 end)
 
 -- 🛡️ Zero Packet Teleport / Pure Stealth: sendServerPos dinonaktifkan total agar posisi karakter 100% natural
-local function sendServerPos(nx: number, ny: number)
+local function sendServerPos(nx, ny)
     -- Disabled demi keamanan (Anti-Teleport / Anti-Flicker)
 end
 
 -- 🛡️ Permission, Lock, & Staff Boundary Helpers (Anti-Kick & Anti-Grief)
 -- Mendukung World Owner, Public World, serta Admin / Member dengan akses lock
-local function canBuildAt(tx: number, ty: number): boolean
+local function canBuildAt(tx, ty)
     if not World then return false end
     if tx < 0 or tx >= (World.w or 100) or ty < 0 or ty >= (World.h or 60) then
         return false
@@ -663,11 +663,11 @@ local function canBuildAt(tx: number, ty: number): boolean
     return true
 end
 
-local function canPunchAt(tx: number, ty: number): boolean
+local function canPunchAt(tx, ty)
     return canBuildAt(tx, ty)
 end
 
-local function isStaffMember(p: any): boolean
+local function isStaffMember(p)
     if not p then return false end
     local uid = p.UserId
     if not uid then return false end
@@ -847,8 +847,8 @@ if not setTileFn then
 end
 
 local state = {
-    selectedBlockId = nil :: number?,
-    selectedBlockName = nil :: string?,
+    selectedBlockId = nil,
+    selectedBlockName = nil,
     autoPnB = false,
     autoClaim = false,
     direction = "Kanan",
@@ -862,7 +862,7 @@ local state = {
     punchDelay = 0.14, -- Kecepatan pukul default: responsif & aman (140ms)
     maxCollectRange = 1.85, -- Radius 1-Blok Presisi (Kiri, Kanan, Atas Kepala, Diagonal 1-Blok, 2-Blok Ditolak)
     seedDropPos = nil :: {x: number, y: number}?,
-    targetSeedId = nil :: number?,
+    targetSeedId = nil,
     seedDropThreshold = 195,
     nextDropAttempt = 0,
     standPos = nil :: {x: number, y: number}?,
@@ -870,15 +870,15 @@ local state = {
     doorPos = nil :: {x: number, y: number}?,
     isRelocating = false,
     isRejoining = false,
-    pnbThread = nil :: thread?,
-    claimThread = nil :: thread?,
-    rejoinThread = nil :: thread?,
-    savedWorldName = nil :: string?,
-    autoRejoinWorld = true :: boolean,
-    wasRunningBeforeDisconnect = false :: boolean,
-    resumePnBOnRejoin = false :: boolean,
-    walkTo = nil :: any,
-    startWorker = nil :: any,
+    pnbThread = nil,
+    claimThread = nil,
+    rejoinThread = nil,
+    savedWorldName = nil,
+    autoRejoinWorld = true,
+    wasRunningBeforeDisconnect = false,
+    resumePnBOnRejoin = false,
+    walkTo = nil,
+    startWorker = nil,
     connections = {} :: {any}
 }
 
@@ -921,7 +921,7 @@ local function resolveWorldNavFunctions()
 end
 resolveWorldNavFunctions()
 
-local function getCurrentWorldName(): string?
+local function getCurrentWorldName()
     resolveWorldNavFunctions()
     if currentWorldFn then
         local ok, w = pcall(currentWorldFn)
@@ -931,7 +931,7 @@ local function getCurrentWorldName(): string?
     return state.savedWorldName
 end
 
-local function isPlayerCurrentlyInTargetWorld(targetWorld: string?): boolean
+local function isPlayerCurrentlyInTargetWorld(targetWorld)
     if not targetWorld or #targetWorld == 0 then return false end
     -- 1. Cek MenuGui / GameGui visibility
     local pGui = lp:FindFirstChild("PlayerGui")
@@ -957,7 +957,7 @@ local function isPlayerCurrentlyInTargetWorld(targetWorld: string?): boolean
     return string.upper(wName) == string.upper(targetWorld)
 end
 
-local function attemptWarpWorld(targetWorld: string)
+local function attemptWarpWorld(targetWorld)
     if not targetWorld or #targetWorld == 0 then return end
     elevate()
     resolveWorldNavFunctions()
@@ -1077,7 +1077,7 @@ genv.PnB_State = state
 shared.PnB_State = state
 _G.PnB_State = state
 
-local function findMatchingSeedId(blockId: number): number?
+local function findMatchingSeedId(blockId)
     if not ItemDB or not ItemDB[blockId] then return nil end
     local rawName = ItemDB[blockId].name or ""
     local cleanName = string.lower((string.gsub(rawName, "`(%S)", "")))
@@ -1095,7 +1095,7 @@ local function findMatchingSeedId(blockId: number): number?
     return nil
 end
 
-local function walkToTile(targetX: number, targetY: number?, timeoutSec: number?): boolean
+local function walkToTile(targetX, targetY, timeoutSec)
     local maxTime = os.clock() + (timeoutSec or 8.0)
     local targetSafeX = targetX + 0.50
     elevate()
@@ -1167,7 +1167,7 @@ local function walkToTile(targetX: number, targetY: number?, timeoutSec: number?
     return math.abs(targetSafeX - finalX) <= 0.45
 end
 
-local function getItemLayer(id: number): string
+local function getItemLayer(id)
     ensureItemDB()
     local item = ItemDB and ItemDB[id]
     if item and item.background then
@@ -1176,7 +1176,7 @@ local function getItemLayer(id: number): string
     return "fg"
 end
 
-local function isPlaceableFarmableItem(itemId: number): boolean
+local function isPlaceableFarmableItem(itemId)
     if not itemId or itemId == 18 or itemId == 32 then return false end
     ensureItemDB()
     if not ItemDB then return false end
@@ -1200,7 +1200,7 @@ local function isPlaceableFarmableItem(itemId: number): boolean
     return false
 end
 
-local function removeColorAndSymbols(str: string)
+local function removeColorAndSymbols(str)
     if not str then return "" end
     local s = string.gsub(str, "`(%S)", "")
     s = string.gsub(s, "Dr%.%s*", "")
@@ -1211,9 +1211,9 @@ local function removeColorAndSymbols(str: string)
     return s
 end
 
-local function sendChat(text: string)
+local function sendChat(text)
     elevate()
-    local tcs = TextChatService :: any
+    local tcs = TextChatService
     local channel = tcs:FindFirstChild("TextChannels") and tcs.TextChannels:FindFirstChild("RBXGeneral")
     if channel then
         pcall(function() channel:SendAsync(text) end)
@@ -1240,7 +1240,7 @@ local updatePosUI: any = nil
 -- =========================================================================
 -- ⚡ ULTRA CLEAN DROP COLLECTION (100% Native - ZERO Teleport & ZERO Glitch)
 -- =========================================================================
-local function collectDropSync(u13: any): boolean
+local function collectDropSync(u13)
     if not u13 or type(u13.uid) ~= "number" or u13.n <= 0 then return false end
     if u13.taking and (type(u13.taking) ~= "number" or (os.clock() - u13.taking) < 1.0) then return false end
     if u13.failedUntil and os.clock() < u13.failedUntil then return false end
@@ -1470,7 +1470,7 @@ local function startClaimWorker()
     end)
 end
 
-local function checkCaptchaClaim(rawText: string)
+local function checkCaptchaClaim(rawText)
     if not state.autoClaim or not rawText or type(rawText) ~= "string" then return end
     local match = string.match(rawText, "/claim%s+([%w%d%p]+)") or string.match(rawText, "claim%s+([%w%d%p]+)")
     if match then
@@ -1494,8 +1494,8 @@ if WorldRemotes and WorldRemotes:FindFirstChild("WorldNotice") then
     table.insert(state.connections, noticeConn)
 end
 
-if (TextChatService :: any):FindFirstChild("MessageReceived") then
-    local chatConn = (TextChatService :: any).MessageReceived:Connect(function(textChatMessage: any)
+if TextChatService:FindFirstChild("MessageReceived") then
+    local chatConn = TextChatService.MessageReceived:Connect(function(textChatMessage)
         elevate()
         if textChatMessage and textChatMessage.Text then
             checkCaptchaClaim(textChatMessage.Text)
@@ -1596,7 +1596,7 @@ if WorldRemotes and WorldRemotes:FindFirstChild("LeaveWorld") then
     table.insert(state.connections, lwConn)
 end
 
-local function placeTile(tx: number, ty: number, blockId: number): boolean
+local function placeTile(tx, ty, blockId)
     if not state.autoPnB or not blockId then return false end
     local bp = refreshBackpackReference()
     if not bp or bp:count(blockId) <= 0 then return false end
@@ -1630,7 +1630,7 @@ local function placeTile(tx: number, ty: number, blockId: number): boolean
     return placedTile == blockId
 end
 
-local function placeTileFast(tx: number, ty: number, blockId: number): boolean
+local function placeTileFast(tx, ty, blockId)
     if not state.autoPnB or not blockId then return false end
     local bp = refreshBackpackReference()
     if not bp or bp:count(blockId) <= 0 then return false end
@@ -1658,7 +1658,7 @@ local function placeTileFast(tx: number, ty: number, blockId: number): boolean
     return true
 end
 
-local function breakTile(tx: number, ty: number, blockId: number?)
+local function breakTile(tx, ty, blockId)
     if not state.autoPnB then return end
     elevate()
 
@@ -1699,7 +1699,7 @@ local function breakTile(tx: number, ty: number, blockId: number?)
     task.wait(0.02)
 end
 
-local function getNativePutDown(): any
+local function getNativePutDown()
     if getgc then
         local okF, fns = pcall(getgc, false)
         if okF and type(fns) == "table" then
@@ -1713,7 +1713,7 @@ local function getNativePutDown(): any
     return nil
 end
 
-local function performDrop(id: number, count: number, targetX: number, targetY: number): boolean
+local function performDrop(id, count, targetX, targetY)
     local dropAmount = math.min(count, 200)
     if dropAmount <= 0 then return false end
 
@@ -2957,7 +2957,7 @@ populateBlockPicker = function(query: string?)
     local candidateList = {}
     local addedIds = {}
 
-    local function addCandidate(id: number, inBagCount: number, fromDB: boolean)
+    local function addCandidate(id, inBagCount, fromDB)
         if not id or addedIds[id] then return end
         if not isPlaceableFarmableItem(id) then return end
         local it = ItemDB and ItemDB[id]
@@ -3439,7 +3439,7 @@ refreshMatrixUI = function()
     end
 end
 
-local function createTileButton(key: string, pos: UDim2, size: UDim2)
+local function createTileButton(key, pos, size)
     local btn = Instance.new("TextButton")
     btn.Name = "Tile_" .. key
     btn.Position = pos
@@ -3499,7 +3499,7 @@ presetFrame.Position = UDim2.fromOffset(12, 354)
 presetFrame.BackgroundTransparency = 1
 presetFrame.Parent = scrollFrame
 
-local function createPresetButton(name: string, xOffset: number, width: number, onClick: () -> ())
+local function createPresetButton(name, xOffset, width, onClick)
     local pBtn = Instance.new("TextButton")
     pBtn.Name = "Preset_" .. name
     pBtn.Size = UDim2.fromOffset(width, 28)
@@ -3604,7 +3604,7 @@ spRow1.BackgroundTransparency = 1
 
 local updateSpeedLabel: (() -> ())? = nil
 
-local function createSpeedPreset(txt: string, val: number, xPos: number, width: number)
+local function createSpeedPreset(txt, val, xPos, width)
     local btn = Instance.new("TextButton", spRow1)
     btn.Size = UDim2.fromOffset(width, 20)
     btn.Position = UDim2.fromOffset(xPos, 0)
@@ -4326,3 +4326,4 @@ if state.autoRejoinWorld and startRejoinWatchdog then
 end
 
 print("[PnB] Put and Break & Auto Claim (Pro V7.1 - Clean & Pure Engine) siap digunakan!")
+
