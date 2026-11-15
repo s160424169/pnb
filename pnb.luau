@@ -1,4 +1,4 @@
-﻿-- =========================================================================
+-- =========================================================================
 -- 🧱 PUT & BREAK (PnB) & AUTO CLAIM SCRIPT (PRO V7.1 - CLEAN & PURE ENGINE)
 -- Game: Growblox (Place ID: 112863874972771)
 -- Fitur: Auto Put & Break (1-Tile & 2-Far), 100% Native Drop Collection (Zero-Teleport / Zero-Jitter),
@@ -205,7 +205,7 @@ if World then
     World.placedAt = {fg = dummyFg, bg = dummyBg}
 end
 
-local invUI: any = nil
+local invUI = nil
 local okInv, invModule = pcall(function()
     local pg = lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui", 5)
     local gg = pg and (pg:FindFirstChild("GameGui") or pg:WaitForChild("GameGui", 5))
@@ -215,7 +215,7 @@ if okInv and invModule then
     pcall(function() invUI = r(invModule) end)
 end
 
-local backpack: any = nil
+local backpack = nil
 local function refreshBackpackReference()
     elevate()
     -- Source 1: plantSeed in getgc(false) (Direct live backpack in GrowBlox v1210)
@@ -269,12 +269,12 @@ end
 refreshBackpackReference()
 
 -- 🛡️ UNIVERSAL MODULE RESOLVER (100% Kebal Obfuscasi & Unparenting Shared)
-local ItemDB: any = nil
-local ItemIcon: any = nil
-local Sfx: any = nil
-local Roles: any = nil
-local AreaLock: any = nil
-local Net: any = nil
+local ItemDB = nil
+local ItemIcon = nil
+local Sfx = nil
+local Roles = nil
+local AreaLock = nil
+local Net = nil
 
 local function ensureItemDB()
     if ItemDB and rawget(ItemDB, 2) then return ItemDB end
@@ -715,16 +715,16 @@ local function checkAnyStaffPresent(): (boolean, string?)
 end
 
 -- ⚡ Ekstraksi fungsi engine langsung secara dinamis (Anti-Shift / Self-Healing)
-local hitFn: any
-local setTileFn: any
-local updateDropsFn: any
-local dropsTable: any
-local TileSize: number = 64
-local Frame: any
-local gemAnims: any
-local flyToBackpack: any
-local gm: any
-local setDropCount: any
+local hitFn
+local setTileFn
+local updateDropsFn
+local dropsTable
+local TileSize = 64
+local Frame
+local gemAnims
+local flyToBackpack
+local gm
+local setDropCount
 
 -- 💎 Ekstraksi dropsTable resmi langsung dari World.dropList (100% akurat & anti-shift)
 if World and World.dropList then
@@ -763,7 +763,7 @@ end
 
 -- Method B: Scan RenderStepped connections (100% kebal nama modul)
 local renderConns = getconns(RunService.RenderStepped)
-local gameStepFn: any
+local gameStepFn
 for _, c in ipairs(renderConns) do
     local f = c.Function
     if f and typeof(f) == "function" then
@@ -856,18 +856,18 @@ local state = {
     customTiles = {
         ["1,0"] = true,
         ["1,-1"] = true
-    } :: {[string]: boolean},
+    },
     offsetY = 0,
     placeDelay = 0.16,
     punchDelay = 0.14, -- Kecepatan pukul default: responsif & aman (140ms)
     maxCollectRange = 1.85, -- Radius 1-Blok Presisi (Kiri, Kanan, Atas Kepala, Diagonal 1-Blok, 2-Blok Ditolak)
-    seedDropPos = nil :: {x: number, y: number}?,
+    seedDropPos = nil,
     targetSeedId = nil,
     seedDropThreshold = 195,
     nextDropAttempt = 0,
-    standPos = nil :: {x: number, y: number}?,
-    stockPos = nil :: {x: number, y: number}?,
-    doorPos = nil :: {x: number, y: number}?,
+    standPos = nil,
+    stockPos = nil,
+    doorPos = nil,
     isRelocating = false,
     isRejoining = false,
     pnbThread = nil,
@@ -879,7 +879,7 @@ local state = {
     resumePnBOnRejoin = false,
     walkTo = nil,
     startWorker = nil,
-    connections = {} :: {any}
+    connections = {}
 }
 
 -- Integrasi kompatibilitas global dengan setup script teman (AutoBreakCustom)
@@ -891,11 +891,11 @@ if genv.AutoBreakCustom.StockPos then state.stockPos = genv.AutoBreakCustom.Stoc
 if genv.AutoBreakCustom.DoorPos then state.doorPos = genv.AutoBreakCustom.DoorPos end
 
 -- 🌍 Resolusi Fungsi Navigasi World (enterWorld, currentWorld, warp)
-local currentWorldFn: any = nil
-local enterWorldFn: any = nil
-local warpFn: any = nil
+local currentWorldFn = nil
+local enterWorldFn = nil
+local warpFn = nil
 
-local enterFn: any = nil
+local enterFn = nil
 
 local function resolveWorldNavFunctions()
     if currentWorldFn and (enterWorldFn or warpFn or enterFn) then return end
@@ -1070,7 +1070,7 @@ elseif genv.PnB_SavedWorld then
 end
 
 -- Forward declaration fungsi watchdog rejoin
-local startRejoinWatchdog: any = nil
+local startRejoinWatchdog = nil
 
 -- Expose global state for diagnostics and control
 genv.PnB_State = state
@@ -1220,22 +1220,22 @@ local function sendChat(text)
     end
 end
 
-local pickerModal: any = nil
-local searchBox: any = nil
-local populateBlockPicker: any = nil
-local updatePickButton: any = nil
-local updateStatusLabel: any = nil
-local updatePnBButton: any = nil
-local updateClaimButton: any = nil
-local seedIdInput: any = nil
-local seedXInput: any = nil
-local seedYInput: any = nil
-local standXInput: any = nil
-local standYInput: any = nil
-local stockXInput: any = nil
-local stockYInput: any = nil
-local updateSeedUI: any = nil
-local updatePosUI: any = nil
+local pickerModal = nil
+local searchBox = nil
+local populateBlockPicker = nil
+local updatePickButton = nil
+local updateStatusLabel = nil
+local updatePnBButton = nil
+local updateClaimButton = nil
+local seedIdInput = nil
+local seedXInput = nil
+local seedYInput = nil
+local standXInput = nil
+local standYInput = nil
+local stockXInput = nil
+local stockYInput = nil
+local updateSeedUI = nil
+local updatePosUI = nil
 
 -- =========================================================================
 -- ⚡ ULTRA CLEAN DROP COLLECTION (100% Native - ZERO Teleport & ZERO Glitch)
@@ -2555,6 +2555,8 @@ state.rejoinWatchdog = startRejoinWatchdog
 -- 🖥️ USER INTERFACE (GUI)
 -- =========================================================================
 
+local sg = nil
+local function buildGUI()
 local uiParent = nil
 local okHui, hui = pcall(function() return gethui() end)
 if okHui and hui then
@@ -2575,7 +2577,7 @@ for _, p in ipairs({ uiParent, pcall(function() return game:GetService("CoreGui"
     end
 end
 
-local sg = Instance.new("ScreenGui")
+sg = Instance.new("ScreenGui")
 sg.Name = "PlantAndBreakGUI"
 sg.ResetOnSpawn = false
 sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -2689,7 +2691,7 @@ statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.BackgroundTransparency = 1
 statusLabel.Parent = mainFrame
 
-updateStatusLabel = function(text: string)
+updateStatusLabel = function(text)
     if statusLabel and statusLabel.Parent then
         statusLabel.Text = text
     end
@@ -2921,7 +2923,7 @@ grid.SortOrder = Enum.SortOrder.LayoutOrder
 grid.Padding = UDim.new(0, 4)
 grid.Parent = scroll
 
-populateBlockPicker = function(query: string?)
+populateBlockPicker = function(query)
     elevate()
     ensureItemDB()
     ensureItemIcon()
@@ -3304,7 +3306,7 @@ local dirCorner = Instance.new("UICorner")
 dirCorner.CornerRadius = UDim.new(0, 6)
 dirCorner.Parent = dirBtn
 
-local refreshMatrixUI: any = nil
+local refreshMatrixUI = nil
 
 local PNB_MODES = {
     "1-Tile",
@@ -3403,8 +3405,8 @@ mStroke.Color = Color3.fromRGB(52, 56, 70)
 mStroke.Thickness = 1.2
 mStroke.Parent = matrixContainer
 
-local cellButtons: {[string]: any} = {}
-local cellDefaultLabels: {[string]: string} = {
+local cellButtons = {}
+local cellDefaultLabels = {
     ["-1,-2"] = "Kiri\nAtas",
     ["0,-2"]  = "Tengah\nAtas",
     ["1,-2"]  = "Kanan\nAtas",
@@ -3682,6 +3684,7 @@ spPlus.MouseButton1Click:Connect(function()
     if updateSpeedLabel then updateSpeedLabel() end
 end)
 
+do
 -- ================== FITUR AUTO DROP SEED ==================
 local seedDropFrame = Instance.new("Frame")
 seedDropFrame.Name = "SeedDropFrame"
@@ -3812,6 +3815,8 @@ end
 seedXInput.FocusLost:Connect(applyManualSeed)
 seedYInput.FocusLost:Connect(applyManualSeed)
 
+end
+do
 -- ================== FITUR AUTO RESTOCK & DOOR POS ==================
 local restockFrame = Instance.new("Frame")
 restockFrame.Name = "RestockFrame"
@@ -4040,6 +4045,8 @@ end
 doorXInput.FocusLost:Connect(applyManualDoor)
 doorYInput.FocusLost:Connect(applyManualDoor)
 
+end
+do
 -- ================== FITUR AUTO REJOIN & RESUME WORLD ==================
 local rejoinFrame = Instance.new("Frame")
 rejoinFrame.Name = "RejoinFrame"
@@ -4120,9 +4127,12 @@ bottomSpacer.Position = UDim2.fromOffset(12, 704)
 bottomSpacer.BackgroundTransparency = 1
 bottomSpacer.Parent = scrollFrame
 
+end
+end
+buildGUI()
 -- Action helpers untuk testing dan integrasi programmatic
 genv.PnB_Actions = {
-    selectBlock = function(id: number)
+    selectBlock = function(id)
         local meta = ItemDB[id]
         if meta then
             state.selectedBlockId = id
@@ -4132,7 +4142,7 @@ genv.PnB_Actions = {
         end
         return false
     end,
-    setMode = function(m: string)
+    setMode = function(m)
         if m == "1-Tile" or m == "2-Far" or m == "3-Block" or m == "6-Block" or m == "Custom" or m == "Custom (1-Blok)" then
             state.mode = m
             if applyModePreset then applyModePreset() end
@@ -4142,7 +4152,7 @@ genv.PnB_Actions = {
         end
         return false
     end,
-    setDirection = function(d: string)
+    setDirection = function(d)
         if d == "Kanan" or d == "Kiri" then
             state.direction = d
             if dirBtn then dirBtn.Text = (d == "Kanan") and "Arah: Kanan ▶" or "Arah: ◀ Kiri" end
@@ -4150,7 +4160,7 @@ genv.PnB_Actions = {
         end
         return false
     end,
-    setCustomTile = function(dx: number, dy: number, enabled: boolean)
+    setCustomTile = function(dx, dy, enabled)
         local key = dx .. "," .. dy
         if enabled then
             state.customTiles[key] = true
@@ -4160,7 +4170,7 @@ genv.PnB_Actions = {
         refreshMatrixUI()
         return true
     end,
-    applyPreset = function(name: string)
+    applyPreset = function(name)
         if name == "Kanan" then
             table.clear(state.customTiles)
             state.customTiles["1,0"] = true
@@ -4215,7 +4225,7 @@ genv.PnB_Actions = {
         return state.customTiles
     end,
     refreshMatrix = refreshMatrixUI,
-    toggleClaim = function(on: boolean?)
+    toggleClaim = function(on)
         if on == nil then
             state.autoClaim = not state.autoClaim
         else
@@ -4231,7 +4241,7 @@ genv.PnB_Actions = {
         end
         return state.autoClaim
     end,
-    togglePnB = function(on: boolean?)
+    togglePnB = function(on)
         if on == nil then
             state.autoPnB = not state.autoPnB
         else
@@ -4249,26 +4259,26 @@ genv.PnB_Actions = {
         end
         return state.autoPnB
     end,
-    setSeedDropPos = function(x: number, y: number)
+    setSeedDropPos = function(x, y)
         state.seedDropPos = {x = x, y = y}
         if genv.AutoBreakCustom then genv.AutoBreakCustom.SeedDropPos = state.seedDropPos end
         if updateSeedUI then updateSeedUI() end
         return true
     end,
-    setTargetSeed = function(id: number)
+    setTargetSeed = function(id)
         state.targetSeedId = id
         if genv.AutoBreakCustom then genv.AutoBreakCustom.TargetSeedID = tostring(id) end
         if seedIdInput then seedIdInput.Text = tostring(id) end
         if updateSeedUI then updateSeedUI() end
         return true
     end,
-    setStandPos = function(x: number, y: number)
+    setStandPos = function(x, y)
         state.standPos = {x = x, y = y}
         if genv.AutoBreakCustom then genv.AutoBreakCustom.StandPos = state.standPos end
         if updatePosUI then updatePosUI() end
         return true
     end,
-    setStockPos = function(x: number, y: number)
+    setStockPos = function(x, y)
         state.stockPos = {x = x, y = y}
         if genv.AutoBreakCustom then genv.AutoBreakCustom.StockPos = state.stockPos end
         if updatePosUI then updatePosUI() end
@@ -4326,4 +4336,5 @@ if state.autoRejoinWorld and startRejoinWatchdog then
 end
 
 print("[PnB] Put and Break & Auto Claim (Pro V7.1 - Clean & Pure Engine) siap digunakan!")
+
 
