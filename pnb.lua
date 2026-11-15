@@ -32,7 +32,14 @@ local function sendKeySafe(key: Enum.KeyCode, isDown: boolean)
         VirtualInputManager:SendKeyEvent(isDown, key, false, game)
     end)
 end
-local lp = Players.LocalPlayer or Players:GetPlayers()[1]
+local lp = Players.LocalPlayer
+if not lp then
+    repeat
+        task.wait(0.1)
+        lp = Players.LocalPlayer
+    until lp or #Players:GetPlayers() > 0
+    lp = lp or Players:GetPlayers()[1]
+end
 
 local r = require :: any
 local getconns = (getconnections :: any)
@@ -2548,9 +2555,25 @@ state.rejoinWatchdog = startRejoinWatchdog
 -- 🖥️ USER INTERFACE (GUI)
 -- =========================================================================
 
-local uiParent = lp:WaitForChild("PlayerGui")
-local old = uiParent:FindFirstChild("PlantAndBreakGUI")
-if old then old:Destroy() end
+local uiParent = nil
+local okHui, hui = pcall(function() return gethui() end)
+if okHui and hui then
+    uiParent = hui
+else
+    local okCore, core = pcall(function() return game:GetService("CoreGui") end)
+    if okCore and core then
+        uiParent = core
+    else
+        uiParent = (lp and lp:FindFirstChild("PlayerGui")) or (lp and lp:WaitForChild("PlayerGui", 5))
+    end
+end
+
+for _, p in ipairs({ uiParent, pcall(function() return game:GetService("CoreGui") end) and game:GetService("CoreGui"), lp and lp:FindFirstChild("PlayerGui") }) do
+    if typeof(p) == "Instance" then
+        local old = p:FindFirstChild("PlantAndBreakGUI")
+        if old then pcall(function() old:Destroy() end) end
+    end
+end
 
 local sg = Instance.new("ScreenGui")
 sg.Name = "PlantAndBreakGUI"
