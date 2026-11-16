@@ -901,6 +901,7 @@ local state = {
     seedDropThreshold = 195,
     nextDropAttempt = 0,
     standPos = nil ,
+    doorPos = nil ,
     stockPos = nil ,
     isRelocating = false,
     isRejoining = false,
@@ -921,6 +922,7 @@ genv.AutoBreakCustom = genv.AutoBreakCustom or {}
 if genv.AutoBreakCustom.SeedDropPos then state.seedDropPos = genv.AutoBreakCustom.SeedDropPos end
 if genv.AutoBreakCustom.TargetSeedID then state.targetSeedId = tonumber(genv.AutoBreakCustom.TargetSeedID) end
 if genv.AutoBreakCustom.StandPos then state.standPos = genv.AutoBreakCustom.StandPos end
+    if genv.AutoBreakCustom.DoorPos then state.doorPos = genv.AutoBreakCustom.DoorPos end
 if genv.AutoBreakCustom.StockPos then state.stockPos = genv.AutoBreakCustom.StockPos end
 if genv.AutoBreakCustom.AutoRejoinWorld ~= nil then state.autoRejoinWorld = genv.AutoBreakCustom.AutoRejoinWorld end
 if genv.AutoBreakCustom.SavedWorld then state.savedWorldName = genv.AutoBreakCustom.SavedWorld end
@@ -1878,6 +1880,17 @@ local function performDrop(id, count, targetX, targetY)
     return false
 end
 
+local function getLivePos()
+    local w = World or findWorldFromAnySource()
+    if not w or not w.goTo then return nil, nil end
+    local ok1, x = pcall(debug.getupvalue, w.goTo, 1)
+    local ok2, y = pcall(debug.getupvalue, w.goTo, 2)
+    if ok1 and type(x) == "number" and ok2 and type(y) == "number" then
+        return x, y
+    end
+    return nil, nil
+end
+
 local function startPnBWorker()
     if state.pnbThread then
         task.cancel(state.pnbThread)
@@ -1944,7 +1957,8 @@ local function startPnBWorker()
             local alignTimeout = os.clock() + 0.20
             sendKeySafe(alignKey, true)
             while os.clock() < alignTimeout do
-                local cur = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
+                local okCur, curV = pcall(debug.getupvalue, World.goTo, 1)
+                                    local cur = (okCur and type(curV) == "number") and curV or safeAnchorX
                 if (alignKey == Enum.KeyCode.D and cur >= safeAnchorX) or (alignKey == Enum.KeyCode.A and cur <= safeAnchorX) then
                     break
                 end
@@ -1991,8 +2005,7 @@ local function startPnBWorker()
                 -- 🛡️ Safety Boundary & Auto-Walk to StandPos (aktif baik saat pergeseran maupun baru masuk world manual)
                 if not state.isRelocating then
                     local w = World or findWorldFromAnySource()
-                    local liveX = (w and w.goTo and debug.getupvalue(w.goTo, 1))
-                    local liveY = (w and w.goTo and debug.getupvalue(w.goTo, 2))
+                    local liveX, liveY = getLivePos()
                     local targetX = state.standPos and state.standPos.x or anchorTileX
                     local targetY = state.standPos and state.standPos.y or anchorTileY
 
@@ -2013,7 +2026,8 @@ local function startPnBWorker()
                             anchorTileY = targetY
                             safeAnchorX = targetX + 0.50
 
-                            local liveAfter = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
+                            local okAfter, curAfter = pcall(debug.getupvalue, World.goTo, 1)
+                            local liveAfter = (okAfter and type(curAfter) == "number") and curAfter or safeAnchorX
                             if math.abs(liveAfter - safeAnchorX) > 0.10 then
                                 local alignKey = (liveAfter < safeAnchorX) and Enum.KeyCode.D or Enum.KeyCode.A
                                 local alignTimeout = os.clock() + 0.20
@@ -2033,7 +2047,8 @@ local function startPnBWorker()
                                 end)
                                 task.wait(0.02)
                             end
-                            safeAnchorX = (debug.getupvalue(World.goTo, 1)) or (targetX + 0.50)
+                            local okS, safeV = pcall(debug.getupvalue, World.goTo, 1)
+                            safeAnchorX = (okS and type(safeV) == "number") and safeV or (targetX + 0.50)
                             task.wait(0.05)
                         end
                     end
@@ -4055,7 +4070,7 @@ end
 do
 local restockFrame = Instance.new("Frame")
 restockFrame.Name = "RestockFrame"
-restockFrame.Size = UDim2.new(1, -24, 0, 78)
+restockFrame.Size = UDim2.new(1, -24, 0, 102)
 restockFrame.Position = UDim2.fromOffset(12, 500)
 restockFrame.BackgroundTransparency = 1
 restockFrame.Parent = scrollFrame
@@ -4145,9 +4160,52 @@ skCornerY.CornerRadius = UDim.new(0, 4)
 skCornerY.Parent = stockYInput
 
 -- Row 3: Label Status Posisi
+-- Row 3: Posisi Door (Warp & Rejoin Point)
+local doorBtn = Instance.new("TextButton")
+doorBtn.Size = UDim2.new(0.48, -4, 0, 22)
+doorBtn.Position = UDim2.new(0, 0, 0, 52)
+doorBtn.Text = "🚪 Set Pos Door"
+doorBtn.BackgroundColor3 = Color3.fromRGB(40, 110, 180)
+doorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+doorBtn.Font = Enum.Font.GothamBold
+doorBtn.TextSize = 10
+doorBtn.Parent = restockFrame
+local drCorner = Instance.new("UICorner")
+drCorner.CornerRadius = UDim.new(0, 4)
+drCorner.Parent = doorBtn
+
+local doorXInput = Instance.new("TextBox")
+doorXInput.Size = UDim2.new(0.26, -3, 0, 22)
+doorXInput.Position = UDim2.new(0.48, 0, 0, 52)
+doorXInput.PlaceholderText = "X"
+doorXInput.Text = state.doorPos and tostring(state.doorPos.x) or ""
+doorXInput.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
+doorXInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+doorXInput.Font = Enum.Font.GothamMedium
+doorXInput.TextSize = 10
+doorXInput.Parent = restockFrame
+local drCornerX = Instance.new("UICorner")
+drCornerX.CornerRadius = UDim.new(0, 4)
+drCornerX.Parent = doorXInput
+
+local doorYInput = Instance.new("TextBox")
+doorYInput.Size = UDim2.new(0.26, -3, 0, 22)
+doorYInput.Position = UDim2.new(0.74, 0, 0, 52)
+doorYInput.PlaceholderText = "Y"
+doorYInput.Text = state.doorPos and tostring(state.doorPos.y) or ""
+doorYInput.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
+doorYInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+doorYInput.Font = Enum.Font.GothamMedium
+doorYInput.TextSize = 10
+doorYInput.Parent = restockFrame
+local drCornerY = Instance.new("UICorner")
+drCornerY.CornerRadius = UDim.new(0, 4)
+drCornerY.Parent = doorYInput
+
+-- Row 4: Label Status Posisi
 local posStatusLabel = Instance.new("TextLabel")
 posStatusLabel.Size = UDim2.new(1, 0, 0, 18)
-posStatusLabel.Position = UDim2.fromOffset(0, 52)
+posStatusLabel.Position = UDim2.fromOffset(0, 78)
 posStatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 posStatusLabel.TextSize = 9
 posStatusLabel.Font = Enum.Font.GothamMedium
@@ -4158,7 +4216,8 @@ posStatusLabel.Parent = restockFrame
 updatePosUI = function()
     local sp = state.standPos or (genv.AutoBreakCustom and genv.AutoBreakCustom.StandPos)
     local st = state.stockPos or (genv.AutoBreakCustom and genv.AutoBreakCustom.StockPos)
-    posStatusLabel.Text = string.format("Berdiri:%s | Stok:%s", sp and string.format("(%d,%d)", sp.x, sp.y) or "---", st and string.format("(%d,%d)", st.x, st.y) or "---")
+    local dp = state.doorPos or (genv.AutoBreakCustom and genv.AutoBreakCustom.DoorPos)
+    posStatusLabel.Text = string.format("Berdiri:%s | Stok:%s | Door:%s", sp and string.format("(%d,%d)", sp.x, sp.y) or "---", st and string.format("(%d,%d)", st.x, st.y) or "---", dp and string.format("(%d,%d)", dp.x, dp.y) or "---")
     if sp and standXInput and standYInput then
         if not standXInput:IsFocused() then standXInput.Text = tostring(sp.x) end
         if not standYInput:IsFocused() then standYInput.Text = tostring(sp.y) end
@@ -4166,6 +4225,10 @@ updatePosUI = function()
     if st and stockXInput and stockYInput then
         if not stockXInput:IsFocused() then stockXInput.Text = tostring(st.x) end
         if not stockYInput:IsFocused() then stockYInput.Text = tostring(st.y) end
+    end
+    if dp and doorXInput and doorYInput then
+        if not doorXInput:IsFocused() then doorXInput.Text = tostring(dp.x) end
+        if not doorYInput:IsFocused() then doorYInput.Text = tostring(dp.y) end
     end
 end
 updatePosUI()
@@ -4188,6 +4251,16 @@ stockBtn.MouseButton1Click:Connect(function()
     updatePosUI()
     if updateStatusLabel then updateStatusLabel(string.format("📦 Pos Stok diset: (%d, %d)", tx, ty)) end
     print(string.format("[PnB UI] 📦 Pos Stok diatur ke: (%d, %d)", tx, ty))
+end)
+
+doorBtn.MouseButton1Click:Connect(function()
+    elevate()
+    local tx, ty = getAccurateTilePos()
+    state.doorPos = {x = tx, y = ty}
+    if genv.AutoBreakCustom then genv.AutoBreakCustom.DoorPos = state.doorPos end
+    updatePosUI()
+    if updateStatusLabel then updateStatusLabel(string.format("🚪 Pos Door diset: (%d, %d)", tx, ty)) end
+    print(string.format("[PnB UI] 🚪 Pos Door diatur ke: (%d, %d)", tx, ty))
 end)
 
 local function applyManualStand()
@@ -4215,6 +4288,18 @@ local function applyManualStock()
 end
 stockXInput.FocusLost:Connect(applyManualStock)
 stockYInput.FocusLost:Connect(applyManualStock)
+
+local function applyManualDoor()
+    local nx = tonumber(doorXInput.Text)
+    local ny = tonumber(doorYInput.Text)
+    if nx and ny then
+        state.doorPos = {x = math.floor(nx), y = math.floor(ny)}
+        if genv.AutoBreakCustom then genv.AutoBreakCustom.DoorPos = state.doorPos end
+        if updatePosUI then updatePosUI() end
+    end
+end
+doorXInput.FocusLost:Connect(applyManualDoor)
+doorYInput.FocusLost:Connect(applyManualDoor)
 end
 
 -- ================== FITUR AUTO REJOIN & RESUME WORLD ==================
