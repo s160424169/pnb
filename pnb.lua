@@ -35,7 +35,7 @@ end
 local lp = Players.LocalPlayer or Players:GetPlayers()[1]
 
 local r = require :: any
-local getconns = (getconnections :: any)
+local getconns = (getconnections or get_connections or function(...) return {} end) :: any
 
 -- =========================================================================
 -- 🛡️ BULLETPROOF ANTI-AFK & AUTO-RECONNECT ENGINE (100% UNBEATABLE)
@@ -755,7 +755,13 @@ if getgc then
 end
 
 -- Method B: Scan RenderStepped connections (100% kebal nama modul)
-local renderConns = getconns(RunService.RenderStepped)
+local renderConns = {}
+if getconns then
+    local ok, res = pcall(getconns, RunService.RenderStepped)
+    if ok and type(res) == "table" then
+        renderConns = res
+    end
+end
 local gameStepFn: any
 for _, c in ipairs(renderConns) do
     local f = c.Function
@@ -832,11 +838,47 @@ if not dropsTable and World and World.drops then
     dropsTable = World.drops
 end
 
+-- Menunggu world & engine siap (dukungan mobile executor Delta / loading map)
+if not hitFn or not setTileFn then
+    local waitAttempts = 0
+    while waitAttempts < 12 and (not hitFn or not setTileFn) do
+        task.wait(0.5)
+        waitAttempts = waitAttempts + 1
+        if not World then World = findWorldFromAnySource() end
+        if getgc then
+            local ok, funcs = pcall(getgc, false)
+            if ok and type(funcs) == "table" then
+                for _, fn in ipairs(funcs) do
+                    if typeof(fn) == "function" then
+                        local fnName = debug.getinfo(fn).name
+                        if fnName == "hit" and not hitFn then
+                            for _, up in ipairs(debug.getupvalues(fn)) do
+                                if type(up) == "table" and rawget(up, "fg") and rawget(up, "bg") then
+                                    hitFn = fn
+                                    if not World then World = up end
+                                    break
+                                end
+                            end
+                        elseif fnName == "setTile" and not setTileFn then
+                            for _, up in ipairs(debug.getupvalues(fn)) do
+                                if type(up) == "table" and rawget(up, "fg") and rawget(up, "bg") then
+                                    setTileFn = fn
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 if not hitFn then
-    error("[PnB] Fungsi hit internal tidak ditemukan.")
+    warn("[PnB] Fungsi hit internal belum terdeteksi. Pastikan Anda sudah spawn di dalam World!")
 end
 if not setTileFn then
-    error("[PnB] Fungsi setTile internal tidak ditemukan.")
+    warn("[PnB] Fungsi setTile internal belum terdeteksi. Pastikan Anda sudah spawn di dalam World!")
 end
 
 local state = {
@@ -853,7 +895,7 @@ local state = {
     offsetY = 0,
     placeDelay = 0.16,
     punchDelay = 0.14, -- Kecepatan pukul default: responsif & aman (140ms)
-    maxCollectRange = 1.85, -- Radius 1-Blok Presisi (Kiri, Kanan, Atas Kepala, Diagonal 1-Blok, 2-Blok Ditolak)
+    maxCollectRange = 2.85, -- Radius Luas & Presisi (Menjangkau seluruh gems di kiri, kanan, & atas)
     seedDropPos = nil :: {x: number, y: number}?,
     targetSeedId = nil :: number?,
     seedDropThreshold = 195,
@@ -869,7 +911,7 @@ local state = {
     savedWorldName = nil :: string?,
     autoRejoinWorld = true :: boolean,
     wasRunningBeforeDisconnect = false :: boolean,
-    resumePnBOnRejoin = false :: boolean,
+    resumePnBOnRejoin = true :: boolean,
     walkTo = nil :: any,
     startWorker = nil :: any,
     connections = {} :: {any}
@@ -882,6 +924,8 @@ if genv.AutoBreakCustom.TargetSeedID then state.targetSeedId = tonumber(genv.Aut
 if genv.AutoBreakCustom.StandPos then state.standPos = genv.AutoBreakCustom.StandPos end
 if genv.AutoBreakCustom.StockPos then state.stockPos = genv.AutoBreakCustom.StockPos end
 if genv.AutoBreakCustom.DoorPos then state.doorPos = genv.AutoBreakCustom.DoorPos end
+if genv.AutoBreakCustom.AutoRejoinWorld ~= nil then state.autoRejoinWorld = genv.AutoBreakCustom.AutoRejoinWorld end
+if genv.AutoBreakCustom.SavedWorld then state.savedWorldName = genv.AutoBreakCustom.SavedWorld end
 
 -- 🌍 Resolusi Fungsi Navigasi World (enterWorld, currentWorld, warp)
 local currentWorldFn: any = nil
@@ -1111,24 +1155,23 @@ local function walkToTile(targetX: number, targetY: number?, timeoutSec: number?
             sendKeySafe(Enum.KeyCode.W, false)
         end
 
-        -- Jika target berada di platform bawah (diffY > 1), arahkan ke shaft/lubang lorong
-        if diffY > 1 then
-            local maxW = (w and w.w) or 100
-            local holeX = (curX < (maxW / 2)) and 0 or (maxW - 1)
-            local toHole = (holeX + 0.5) - curX
-            if math.abs(toHole) > 0.4 then
-                diffX = toHole
-            end
-        end
+
 
         local isArrivedY = true
         if targetY then
             isArrivedY = (math.abs(curTileY - targetY) <= 1)
         end
 
-        if math.abs(diffX) <= 0.30 and isArrivedY then
+        if math.abs(diffX) <= 0.10 and isArrivedY then
             sendKeySafe(Enum.KeyCode.A, false)
             sendKeySafe(Enum.KeyCode.D, false)
+            pcall(function()
+                local char = lp.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0)
+                end
+            end)
             return true
         end
 
@@ -1155,6 +1198,13 @@ local function walkToTile(targetX: number, targetY: number?, timeoutSec: number?
     end
     sendKeySafe(Enum.KeyCode.A, false)
     sendKeySafe(Enum.KeyCode.D, false)
+    pcall(function()
+        local char = lp.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0)
+        end
+    end)
     w = World or findWorldFromAnySource()
     local finalX = (w and w.goTo and debug.getupvalue(w.goTo, 1)) or targetSafeX
     return math.abs(targetSafeX - finalX) <= 0.45
@@ -1374,7 +1424,7 @@ local function vacuumNearbyDrops()
             return
         end
 
-        local maxRange = state.maxCollectRange or 1.85
+        local maxRange = state.maxCollectRange or 2.85
         local maxRangeSq = maxRange * maxRange
         local sPos = state.seedDropPos or (genv.AutoBreakCustom and genv.AutoBreakCustom.SeedDropPos)
 
@@ -1387,9 +1437,9 @@ local function vacuumNearbyDrops()
                 if not isTaking and not isFailed then
                     -- ⚡ ULTRA-FAST AABB PRE-FILTER (0 math.sqrt untuk 99.9% drop di world!)
                     local dx = d.x - curX
-                    if dx <= 2.2 and dx >= -2.2 then
+                    if dx <= 3.2 and dx >= -3.2 then
                         local dy = d.y - curY
-                        if dy <= 2.2 and dy >= -3.5 then
+                        if dy <= 3.2 and dy >= -3.5 then
                             -- 🛡️ EXCLUDE SEED DROP PILE:
                             -- Jika drop berada di dalam radius 2.0 tile dari pos drop seed (sPos), JANGAN PERNAH di-vacuum!
                             local isSeedDropPile = false
@@ -1566,12 +1616,7 @@ end
 if WorldRemotes and WorldRemotes:FindFirstChild("WorldClosed") then
     local wcConn = WorldRemotes.WorldClosed.OnClientEvent:Connect(function()
         elevate()
-        if state.autoPnB then
-            state.wasRunningBeforeDisconnect = true
-            state.autoPnB = false
-            if updatePnBButton then updatePnBButton() end
-            if updateStatusLabel then updateStatusLabel("World Ditutup! PnB Dihentikan.") end
-        end
+        print("[PnB Shield] WorldClosed event.")
     end)
     table.insert(state.connections, wcConn)
 end
@@ -1579,12 +1624,7 @@ end
 if WorldRemotes and WorldRemotes:FindFirstChild("LeaveWorld") then
     local lwConn = WorldRemotes.LeaveWorld.OnClientEvent:Connect(function()
         elevate()
-        if state.autoPnB then
-            state.wasRunningBeforeDisconnect = true
-            state.autoPnB = false
-            if updatePnBButton then updatePnBButton() end
-            if updateStatusLabel then updateStatusLabel("Keluar World! PnB Dihentikan.") end
-        end
+        print("[PnB Shield] LeaveWorld event.")
     end)
     table.insert(state.connections, lwConn)
 end
@@ -1814,7 +1854,6 @@ local function startPnBWorker()
         local startAnchorY = debug.getupvalue(World.goTo, 2) or 0
         local anchorTileX = math.floor(startAnchorX)
         local anchorTileY = math.floor(startAnchorY)
-        local initialWorldName = World.name
         local dir = (state.direction == "Kiri") and -1 or 1
 
         -- Inisialisasi StandPos jika belum diatur
@@ -1830,29 +1869,47 @@ local function startPnBWorker()
         end
 
         -- Pastikan karakter berada di Pos Berdiri yang ditentukan
-        if math.abs(startAnchorX - (anchorTileX + 0.50)) > 0.5 or (math.floor(startAnchorY) ~= anchorTileY) then
+        local curTileX = math.floor(startAnchorX)
+        local curTileY = math.floor(startAnchorY)
+        local distFromCenter = math.abs(startAnchorX - (anchorTileX + 0.50))
+
+        if curTileX ~= anchorTileX or curTileY ~= anchorTileY or distFromCenter > 0.35 then
             if updateStatusLabel then updateStatusLabel(string.format("📍 Menuju Pos Berdiri (%d,%d)...", anchorTileX, anchorTileY)) end
             walkToTile(anchorTileX, anchorTileY, 5.0)
         end
+        sendKeySafe(Enum.KeyCode.A, false)
+        sendKeySafe(Enum.KeyCode.D, false)
+        pcall(function()
+            local char = lp.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0)
+            end
+        end)
 
-        -- 🛡️ Kalibrasi posisi berdiri yang presisi dan aman di tengah tile (anchorTileX + 0.50)
+        -- 🛡️ Kalibrasi posisi berdiri tepat di tengah tile (anchorTileX + 0.50)
         local safeAnchorX = anchorTileX + 0.50
-        local liveStartX = debug.getupvalue(World.goTo, 1) or safeAnchorX
+        local liveStartX = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
         if math.abs(liveStartX - safeAnchorX) > 0.10 then
             local alignKey = (liveStartX < safeAnchorX) and Enum.KeyCode.D or Enum.KeyCode.A
-            local alignTimeout = os.clock() + 0.25
+            local alignTimeout = os.clock() + 0.20
             sendKeySafe(alignKey, true)
             while os.clock() < alignTimeout do
-                local cur = debug.getupvalue(World.goTo, 1) or safeAnchorX
+                local cur = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
                 if (alignKey == Enum.KeyCode.D and cur >= safeAnchorX) or (alignKey == Enum.KeyCode.A and cur <= safeAnchorX) then
                     break
                 end
-                task.wait(0.02)
+                task.wait(0.01)
             end
             sendKeySafe(alignKey, false)
-            task.wait(0.04)
+            pcall(function()
+                local char = lp.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0) end
+            end)
+            task.wait(0.02)
         end
-        safeAnchorX = debug.getupvalue(World.goTo, 1) or (anchorTileX + 0.50)
+        safeAnchorX = (debug.getupvalue(World.goTo, 1)) or (anchorTileX + 0.50)
 
         local consecutiveFails = 0
         local lastWorldKeepAlive = os.clock()
@@ -1860,18 +1917,14 @@ local function startPnBWorker()
         while state.autoPnB do
             elevate()
 
-            -- 🛡️ Micro-Movement Keep-Alive (Setiap 2.5 menit untuk mereset Inactivity Watchdog server world Growblox)
+            if state.isRejoining then
+                task.wait(0.5)
+                continue
+            end
+
+            -- 🛡️ Keep-Alive Watchdog (Pukulan aktif mereset inactivity engine tanpa perlu gerak fisik)
             if os.clock() - lastWorldKeepAlive >= 150 then
                 lastWorldKeepAlive = os.clock()
-                pcall(function()
-                    sendKeySafe(Enum.KeyCode.D, true)
-                    task.wait(0.02)
-                    sendKeySafe(Enum.KeyCode.D, false)
-                    task.wait(0.01)
-                    sendKeySafe(Enum.KeyCode.A, true)
-                    task.wait(0.02)
-                    sendKeySafe(Enum.KeyCode.A, false)
-                end)
             end
 
             -- 🛡️ Real-Time Staff Guard (Pemeriksaan berkala setiap putaran PnB):
@@ -1886,49 +1939,42 @@ local function startPnBWorker()
                 break
             end
 
-            -- 🛡️ 2. World Change / Exit Check:
-            if World.name ~= initialWorldName then
-                if state.autoRejoinWorld and state.resumePnBOnRejoin then
-                    -- Pemain terlempar / disconnect dari world saat PnB aktif.
-                    -- Pertahankan resumePnBOnRejoin = true agar watchdog otomatis menyambung kembali PnB setelah rejoin!
-                    print(string.format("[PnB Shield] Terdeteksi keluar dari world %s! Menunggu Auto Rejoin watchdog...", tostring(initialWorldName)))
-                    if updateStatusLabel then updateStatusLabel("🔄 Keluar world! Menunggu auto rejoin...") end
-                    state.isRejoining = true
-                    state.autoPnB = false
-                    break
-                else
-                    state.autoPnB = false
-                    state.resumePnBOnRejoin = false
-                    if updatePnBButton then updatePnBButton() end
-                    if updateStatusLabel then updateStatusLabel("⚠️ World berganti! PnB Dihentikan.") end
-                    print("[PnB Shield] World berubah dari " .. tostring(initialWorldName) .. " ke " .. tostring(World.name))
-                    break
-                end
-            end
-
-            -- 🛡️ 3. Safety Boundary & Displacement Recovery:
+            -- 🛡️ Safety Boundary & Auto-Return to StandPos:
             if not state.isRelocating then
-                local liveX = debug.getupvalue(World.goTo, 1) or anchorTileX
-                local liveY = debug.getupvalue(World.goTo, 2) or anchorTileY
-                if math.abs(liveX - anchorTileX) > 4 or math.abs(liveY - anchorTileY) > 4 then
-                    -- Alih-alih langsung mematikan bot saat tergeser / respawn ke White Door, otomatis berjalan kembali ke Pos Berdiri!
-                    local st = state.standPos or {x = anchorTileX, y = anchorTileY}
-                    if updateStatusLabel then updateStatusLabel(string.format("🚶 Karakter bergeser! Kembali ke Pos Berdiri (%d,%d)...", st.x, st.y)) end
-                    print(string.format("[PnB Recovery] Karakter bergeser (live: %.1f,%.1f vs anchor: %d,%d). Berjalan kembali...", liveX, liveY, anchorTileX, anchorTileY))
+                local liveX = (World and World.goTo and debug.getupvalue(World.goTo, 1)) or anchorTileX
+                local liveY = (World and World.goTo and debug.getupvalue(World.goTo, 2)) or anchorTileY
+                local targetX = state.standPos and state.standPos.x or anchorTileX
+                local targetY = state.standPos and state.standPos.y or anchorTileY
+                if math.abs(liveX - targetX) > 2.5 or math.abs(liveY - targetY) > 2.5 then
+                    if updateStatusLabel then updateStatusLabel(string.format("🚶 Menuju Pos Berdiri (%d,%d)...", targetX, targetY)) end
                     state.isRelocating = true
-                    local arrived = walkToTile(st.x, st.y, 8.0)
+                    walkToTile(targetX, targetY, 6.0)
                     state.isRelocating = false
-                    if not arrived then
-                        state.autoPnB = false
-                        if updatePnBButton then updatePnBButton() end
-                        if updateStatusLabel then updateStatusLabel("⚠️ Gagal kembali ke posisi berdiri! PnB Stop.") end
-                        print("[PnB Shield] Gagal kembali ke anchor! Auto PnB dimatikan.")
-                        break
-                    else
-                        anchorTileX = st.x
-                        anchorTileY = st.y
-                        safeAnchorX = st.x + 0.50
+                    anchorTileX = targetX
+                    anchorTileY = targetY
+                    safeAnchorX = targetX + 0.50
+                    local liveAfter = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
+                    if math.abs(liveAfter - safeAnchorX) > 0.10 then
+                        local alignKey = (liveAfter < safeAnchorX) and Enum.KeyCode.D or Enum.KeyCode.A
+                        local alignTimeout = os.clock() + 0.20
+                        sendKeySafe(alignKey, true)
+                        while os.clock() < alignTimeout do
+                            local cur = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
+                            if (alignKey == Enum.KeyCode.D and cur >= safeAnchorX) or (alignKey == Enum.KeyCode.A and cur <= safeAnchorX) then
+                                break
+                            end
+                            task.wait(0.01)
+                        end
+                        sendKeySafe(alignKey, false)
+                        pcall(function()
+                            local char = lp.Character
+                            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                            if hrp then hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0) end
+                        end)
+                        task.wait(0.02)
                     end
+                    safeAnchorX = (debug.getupvalue(World.goTo, 1)) or (targetX + 0.50)
+                    task.wait(0.05)
                 end
             end
 
@@ -2011,6 +2057,27 @@ local function startPnBWorker()
                     safeAnchorX = stPos.x + 0.50
                     anchorTileX = stPos.x
                     anchorTileY = stPos.y
+                    local liveAfterReturn = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
+                    if math.abs(liveAfterReturn - safeAnchorX) > 0.10 then
+                        local alignKey = (liveAfterReturn < safeAnchorX) and Enum.KeyCode.D or Enum.KeyCode.A
+                        local alignTimeout = os.clock() + 0.20
+                        sendKeySafe(alignKey, true)
+                        while os.clock() < alignTimeout do
+                            local cur = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
+                            if (alignKey == Enum.KeyCode.D and cur >= safeAnchorX) or (alignKey == Enum.KeyCode.A and cur <= safeAnchorX) then
+                                break
+                            end
+                            task.wait(0.01)
+                        end
+                        sendKeySafe(alignKey, false)
+                        pcall(function()
+                            local char = lp.Character
+                            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                            if hrp then hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0) end
+                        end)
+                        task.wait(0.02)
+                    end
+                    safeAnchorX = (debug.getupvalue(World.goTo, 1)) or (stPos.x + 0.50)
                     state.isRelocating = false
                     isScanningDrops = false
 
@@ -2085,8 +2152,29 @@ local function startPnBWorker()
                 safeAnchorX = stPos.x + 0.50
                 anchorTileX = stPos.x
                 anchorTileY = stPos.y
+                local liveAfterStock = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
+                if math.abs(liveAfterStock - safeAnchorX) > 0.10 then
+                    local alignKey = (liveAfterStock < safeAnchorX) and Enum.KeyCode.D or Enum.KeyCode.A
+                    local alignTimeout = os.clock() + 0.20
+                    sendKeySafe(alignKey, true)
+                    while os.clock() < alignTimeout do
+                        local cur = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
+                        if (alignKey == Enum.KeyCode.D and cur >= safeAnchorX) or (alignKey == Enum.KeyCode.A and cur <= safeAnchorX) then
+                            break
+                        end
+                        task.wait(0.01)
+                    end
+                    sendKeySafe(alignKey, false)
+                    pcall(function()
+                        local char = lp.Character
+                        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                        if hrp then hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0) end
+                    end)
+                    task.wait(0.02)
+                end
+                safeAnchorX = (debug.getupvalue(World.goTo, 1)) or (stPos.x + 0.50)
                 state.isRelocating = false
-                task.wait(0.1)
+                task.wait(0.05)
 
                 stock = bp and bp:count(state.selectedBlockId) or 0
                 if stock <= 0 then
@@ -2169,21 +2257,29 @@ local function startPnBWorker()
                     break
                 end
 
-                -- 🛡️ Pastikan posisi karakter tetap aman di safeAnchorX sebelum menaruh balok
+                -- 🛡️ Karakter tetap tepat di tengah safeAnchorX (koreksi halus jika bergeser > 0.14)
                 local curLiveX = debug.getupvalue(World.goTo, 1) or safeAnchorX
-                if math.abs(curLiveX - safeAnchorX) > 0.12 then
-                    local backKey = (curLiveX > safeAnchorX) and Enum.KeyCode.A or Enum.KeyCode.D
-                    local retTimeout = os.clock() + 0.35
+                local diffCenter = curLiveX - safeAnchorX
+                if math.abs(diffCenter) > 0.14 and not state.isRelocating then
+                    local backKey = (diffCenter > 0) and Enum.KeyCode.A or Enum.KeyCode.D
+                    local retTimeout = os.clock() + 0.15
                     sendKeySafe(backKey, true)
                     while os.clock() < retTimeout do
                         local live = debug.getupvalue(World.goTo, 1) or safeAnchorX
-                        if (backKey == Enum.KeyCode.A and live <= safeAnchorX + 0.05) or (backKey == Enum.KeyCode.D and live >= safeAnchorX - 0.05) then
+                        if math.abs(live - safeAnchorX) <= 0.05 then
                             break
                         end
-                        task.wait(0.02)
+                        task.wait(0.01)
                     end
                     sendKeySafe(backKey, false)
-                    task.wait(0.03)
+                    pcall(function()
+                        local char = lp.Character
+                        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                        if hrp then
+                            hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0)
+                        end
+                    end)
+                    task.wait(0.02)
                 end
 
                 -- 1. Taruh balok 1 & balok 2 (hanya jika kosong pada layernya)
@@ -2235,53 +2331,18 @@ local function startPnBWorker()
                     farCycles = farCycles + 1
                 end
 
-                -- 3. Klaim seluruh drop: Maju alami saat kedua tile kosong, lalu kembali ke anchor
+                -- 3. Klaim seluruh drop secara instan di posisi berdiri (100% diam, zero walk)
                 if state.autoClaim then
                     task.wait(0.04)
-
-                    -- Bersihkan status failedUntil agar drop balok ke-2 langsung siap diambil
                     local dList = (World and World.dropList and debug.getupvalue(World.dropList, 1)) or dropsTable
                     if dList then
                         for _, d in ipairs(dList) do
                             d.failedUntil = nil
                         end
                     end
-
-                    -- Ambil drop terdekat (balok 1)
-                    vacuumNearbyDrops()
-
-                    -- Langkah maju menuju tile yang sekarang kosong untuk menyerap drop balok 2
-                    local fwdKey = (dir == 1) and Enum.KeyCode.D or Enum.KeyCode.A
-                    local backKey = (dir == 1) and Enum.KeyCode.A or Enum.KeyCode.D
-                    local targetFwdX = safeAnchorX + (dir * 1.50)
-
-                    local fwdTimeout = os.clock() + 0.40
-                    sendKeySafe(fwdKey, true)
-                    while os.clock() < fwdTimeout and state.autoPnB do
-                        local live = debug.getupvalue(World.goTo, 1) or safeAnchorX
-                        if dir == 1 and live >= targetFwdX then break end
-                        if dir == -1 and live <= targetFwdX then break end
-                        task.wait(0.02)
-                    end
-                    sendKeySafe(fwdKey, false)
-
-                    -- Vacuum drop balok ke-2 (sekarang dalam jarak sangat dekat < 0.5 tiles & 100% diterima server)
-                    task.wait(0.04)
                     vacuumNearbyDrops()
                     task.wait(0.04)
                     vacuumNearbyDrops()
-
-                    -- Mundur kembali ke safeAnchorX sebelum balok ditaruh pada cycle berikutnya
-                    local retTimeout = os.clock() + 0.40
-                    sendKeySafe(backKey, true)
-                    while os.clock() < retTimeout do
-                        local live = debug.getupvalue(World.goTo, 1) or safeAnchorX
-                        if dir == 1 and live <= safeAnchorX + 0.06 then break end
-                        if dir == -1 and live >= safeAnchorX - 0.06 then break end
-                        task.wait(0.02)
-                    end
-                    sendKeySafe(backKey, false)
-                    task.wait(0.03)
                 end
             else
                 -- 🔲 Custom Mode (5x5 Tile Matrix Selector)
@@ -2339,26 +2400,28 @@ local function startPnBWorker()
                         end
                     end
 
-                    local targetAnchorX = anchorTileX + 0.50
-                    if hasRight and not hasLeft then
-                        targetAnchorX = anchorTileX + 0.35
-                    elseif hasLeft and not hasRight then
-                        targetAnchorX = anchorTileX + 0.65
-                    end
-
-                    local curLiveX = debug.getupvalue(World.goTo, 1) or targetAnchorX
-                    if math.abs(curLiveX - targetAnchorX) > 0.12 then
-                        local backKey = (curLiveX > targetAnchorX) and Enum.KeyCode.A or Enum.KeyCode.D
-                        local retTimeout = os.clock() + 0.30
+                    -- 🛡️ Jaga karakter selalu tepat di tengah tile (koreksi halus jika bergeser > 0.14)
+                    local curLiveX = debug.getupvalue(World.goTo, 1) or (anchorTileX + 0.50)
+                    local diffCenter = curLiveX - (anchorTileX + 0.50)
+                    if math.abs(diffCenter) > 0.14 and not state.isRelocating then
+                        local backKey = (diffCenter > 0) and Enum.KeyCode.A or Enum.KeyCode.D
+                        local retTimeout = os.clock() + 0.15
                         sendKeySafe(backKey, true)
                         while os.clock() < retTimeout do
-                            local live = debug.getupvalue(World.goTo, 1) or targetAnchorX
-                            if (backKey == Enum.KeyCode.A and live <= targetAnchorX + 0.05) or (backKey == Enum.KeyCode.D and live >= targetAnchorX - 0.05) then
+                            local live = debug.getupvalue(World.goTo, 1) or (anchorTileX + 0.50)
+                            if math.abs(live - (anchorTileX + 0.50)) <= 0.05 then
                                 break
                             end
-                            task.wait(0.02)
+                            task.wait(0.01)
                         end
                         sendKeySafe(backKey, false)
+                        pcall(function()
+                            local char = lp.Character
+                            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0)
+                            end
+                        end)
                         task.wait(0.02)
                     end
 
@@ -2453,8 +2516,10 @@ startRejoinWatchdog = function()
     state.rejoinThread = task.spawn(function()
         elevate()
         print("[PnB AutoRejoin] Watchdog Door-to-Stand Rejoin aktif.")
+        local outsideWorldSeconds = 0
+
         while state.autoRejoinWorld do
-            task.wait(1.5)
+            task.wait(1.0)
             if not state.autoRejoinWorld then break end
 
             local currentW = (World and World.name and #World.name > 0 and World.name) or (getCurrentWorldName and getCurrentWorldName()) or ""
@@ -2463,21 +2528,29 @@ startRejoinWatchdog = function()
                 state.savedWorldName = currentW
                 genv.PnB_SavedWorld = currentW
                 targetWorld = currentW
+                outsideWorldSeconds = 0
             end
 
             if targetWorld and #targetWorld > 0 and not state.isRejoining then
                 local inTargetWorld = isPlayerCurrentlyInTargetWorld(targetWorld)
 
-                -- Jika pemain terlempar ke menu/lobby/disconnect:
-                if not inTargetWorld then
+                if inTargetWorld then
+                    outsideWorldSeconds = 0
+                else
+                    outsideWorldSeconds = outsideWorldSeconds + 1
+                end
+
+                -- Jika terbukti berada di luar target world selama >= 2 detik berturut-turut:
+                if outsideWorldSeconds >= 2 and not inTargetWorld then
                     state.isRejoining = true
+                    local wasPnBRunning = state.autoPnB
                     print(string.format("[PnB AutoRejoin] Terdeteksi keluar dari world! Target: %s. Menunggu 2.5s lalu masuk kembali...", targetWorld))
 
                     if updateStatusLabel then
                         updateStatusLabel(string.format("🔄 Rejoining world %s...", targetWorld))
                     end
 
-                    -- Pause PnB worker thread jika masih jalan
+                    -- Hentikan sementara PnB worker thread jika sedang berjalan
                     if state.pnbThread then
                         task.cancel(state.pnbThread)
                         state.pnbThread = nil
@@ -2518,13 +2591,14 @@ startRejoinWatchdog = function()
                             updateStatusLabel(string.format("🚶 Menuju Pos Berdiri (%d, %d)...", stPos.x, stPos.y))
                         end
                         walkToTile(stPos.x, stPos.y, 15.0)
-                        task.wait(0.5)
+                        task.wait(0.3)
                     end
 
+                    outsideWorldSeconds = 0
                     state.isRejoining = false
 
                     -- 5. Lanjutkan Auto PnB kembali secara otomatis jika sebelumnya aktif
-                    if state.resumePnBOnRejoin then
+                    if wasPnBRunning or state.resumePnBOnRejoin then
                         print("[PnB AutoRejoin] Posisi berdiri tercapai. Melanjutkan Auto PnB...")
                         state.autoPnB = true
                         if updatePnBButton then updatePnBButton() end
@@ -2545,8 +2619,95 @@ state.startWorker = startPnBWorker
 state.rejoinWatchdog = startRejoinWatchdog
 
 -- =========================================================================
+-- ⚡ ROBLOX DISCONNECT & SERVER AUTO-RECONNECT
+-- =========================================================================
+local function setupRobloxAutoReconnect()
+    local ts = game:GetService("TeleportService")
+    local guiService = game:GetService("GuiService")
+    local coreGui = game:GetService("CoreGui")
+    local isReconnecting = false
+
+    local function handleDisconnect(reason: string)
+        if isReconnecting then return end
+        isReconnecting = true
+        print(string.format("[PnB AutoRejoin] Roblox Disconnect Terdeteksi (%s)! Menyiapkan Reconnect ke Server...", reason))
+
+        -- 1. Queue script via queue_on_teleport agar jalan otomatis setelah server baru dimuat
+        pcall(function()
+            local qot = (syn and syn.queue_on_teleport) or queue_on_teleport or (fluxus and fluxus.queue_on_teleport)
+            if qot then
+                qot('loadstring(game:HttpGet("https://raw.githubusercontent.com/s160424169/pnb/main/pnb.lua"))()')
+            end
+        end)
+
+        -- 2. Tunggu 3.5 detik lalu teleport kembali ke PlaceId
+        task.wait(3.5)
+        pcall(function()
+            ts:Teleport(game.PlaceId, lp)
+        end)
+    end
+
+    -- Listener 1: GuiService ErrorMessageChanged
+    pcall(function()
+        guiService.ErrorMessageChanged:Connect(function()
+            local msg = guiService:GetErrorMessage()
+            if msg and #msg > 0 then
+                handleDisconnect("GuiService: " .. tostring(msg))
+            end
+        end)
+    end)
+
+    -- Listener 2: CoreGui.RobloxPromptGui ErrorPrompt
+    pcall(function()
+        local promptGui = coreGui:WaitForChild("RobloxPromptGui", 5)
+        if promptGui then
+            local overlay = promptGui:WaitForChild("promptOverlay", 5)
+            if overlay then
+                overlay.ChildAdded:Connect(function(child)
+                    if child.Name == "ErrorPrompt" then
+                        handleDisconnect("RobloxPromptGui ErrorPrompt")
+                    end
+                end)
+            end
+        end
+    end)
+
+    -- Listener 3: TeleportService failure
+    pcall(function()
+        ts.TeleportInitFailed:Connect(function(player, result, errorMessage)
+            if player == lp then
+                task.wait(4.0)
+                pcall(function() ts:Teleport(game.PlaceId, lp) end)
+            end
+        end)
+    end)
+end
+
+task.spawn(setupRobloxAutoReconnect)
+
+-- =========================================================================
 -- 🖥️ USER INTERFACE (GUI)
 -- =========================================================================
+
+local dirBtn: any = nil
+local modeBtn: any = nil
+local pickerModal: any = nil
+local populateBlockPicker: any = nil
+
+local function addCorner(parent: Instance, radius: number?): UICorner
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 4)
+    c.Parent = parent
+    return c
+end
+
+local function addStroke(parent: Instance, color: Color3?, thickness: number?): UIStroke
+    local s = Instance.new("UIStroke")
+    s.Color = color or Color3.fromRGB(55, 60, 72)
+    s.Thickness = thickness or 1
+    s.Parent = parent
+    return s
+end
 
 local uiParent = lp:WaitForChild("PlayerGui")
 local old = uiParent:FindFirstChild("PlantAndBreakGUI")
@@ -2577,6 +2738,7 @@ stroke.Color = Color3.fromRGB(55, 60, 72)
 stroke.Thickness = 1.5
 stroke.Parent = mainFrame
 
+do
 local header = Instance.new("Frame")
 header.Size = UDim2.new(1, 0, 0, 34)
 header.BackgroundTransparency = 1
@@ -2654,6 +2816,7 @@ closeBtn.MouseButton1Click:Connect(function()
         genv.PnB_Cleanup()
     end
 end)
+end
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(1, -24, 0, 18)
@@ -3160,6 +3323,7 @@ pickBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+do
 local pnbBtn = Instance.new("TextButton")
 pnbBtn.Name = "AutoPnBButton"
 pnbBtn.Size = UDim2.new(1, -24, 0, 36)
@@ -3200,16 +3364,28 @@ pnbBtn.MouseButton1Click:Connect(function()
     end
 
     state.autoPnB = not state.autoPnB
-    state.resumePnBOnRejoin = state.autoPnB
     updatePnBButton()
 
     if state.autoPnB then
+        local curW = getCurrentWorldName()
+        if curW and #curW > 0 then
+            state.savedWorldName = curW
+            genv.PnB_SavedWorld = curW
+            if genv.AutoBreakCustom then genv.AutoBreakCustom.SavedWorld = curW end
+        end
+        state.resumePnBOnRejoin = true
+        if state.autoRejoinWorld and not state.rejoinThread and startRejoinWatchdog then
+            startRejoinWatchdog()
+        end
         startPnBWorker()
     else
+        state.resumePnBOnRejoin = false
         if state.pnbThread then
             task.cancel(state.pnbThread)
             state.pnbThread = nil
         end
+        sendKeySafe(Enum.KeyCode.A, false)
+        sendKeySafe(Enum.KeyCode.D, false)
         updateStatusLabel("Status: Berhenti (Idle)")
     end
 end)
@@ -3260,7 +3436,9 @@ claimBtn.MouseButton1Click:Connect(function()
         print("[PnB] Auto Claim Dimatikan.")
     end
 end)
+end
 
+do
 local optFrame = Instance.new("Frame")
 optFrame.Size = UDim2.new(1, -24, 0, 30)
 optFrame.Position = UDim2.fromOffset(12, 128)
@@ -3658,8 +3836,43 @@ spPlus.MouseButton1Click:Connect(function()
     state.punchDelay = math.min(0.40, state.punchDelay + 0.02)
     if updateSpeedLabel then updateSpeedLabel() end
 end)
+end
+
+-- =========================================================================
+-- 📍 FUNGSI PENGAMBIL POSISI TILE AKURAT (Shared across all UI sections)
+-- =========================================================================
+local function getAccurateTilePos(): (number, number)
+    elevate()
+    local w = World or findWorldFromAnySource()
+    if w and w.goTo then
+        local ok1, curX = pcall(debug.getupvalue, w.goTo, 1)
+        local ok2, curY = pcall(debug.getupvalue, w.goTo, 2)
+        if ok1 and ok2 and typeof(curX) == "number" and typeof(curY) == "number" then
+            return math.floor(curX), math.floor(curY)
+        end
+    end
+    if hitFn then
+        for _, up in ipairs(debug.getupvalues(hitFn)) do
+            if type(up) == "table" and rawget(up, "goTo") then
+                local ok1, curX = pcall(debug.getupvalue, up.goTo, 1)
+                local ok2, curY = pcall(debug.getupvalue, up.goTo, 2)
+                if ok1 and ok2 and typeof(curX) == "number" and typeof(curY) == "number" then
+                    return math.floor(curX), math.floor(curY)
+                end
+            end
+        end
+    end
+    local char = lp.Character
+    local hrp = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+    if hrp then
+        local ts = TileSize or 64
+        return math.floor(hrp.Position.X / ts), math.floor(-hrp.Position.Y / ts)
+    end
+    return 0, 0
+end
 
 -- ================== FITUR AUTO DROP SEED ==================
+do
 local seedDropFrame = Instance.new("Frame")
 seedDropFrame.Name = "SeedDropFrame"
 seedDropFrame.Size = UDim2.new(1, -24, 0, 48)
@@ -3732,12 +3945,6 @@ seedPosLabel.BackgroundTransparency = 1
 seedPosLabel.TextXAlignment = Enum.TextXAlignment.Left
 seedPosLabel.Parent = seedDropFrame
 
-local function getAccurateTilePos(): (number, number)
-    local curX = debug.getupvalue(World.goTo, 1) or 0
-    local curY = debug.getupvalue(World.goTo, 2) or 0
-    return math.floor(curX), math.floor(curY)
-end
-
 updateSeedUI = function()
     local sp = state.seedDropPos or (genv.AutoBreakCustom and genv.AutoBreakCustom.SeedDropPos)
     local sId = state.targetSeedId or (genv.AutoBreakCustom and genv.AutoBreakCustom.TargetSeedID)
@@ -3763,6 +3970,8 @@ seedDropBtn.MouseButton1Click:Connect(function()
         genv.AutoBreakCustom.SeedDropPos = state.seedDropPos
     end
     updateSeedUI()
+    if updateStatusLabel then updateStatusLabel(string.format("🌱 Pos Drop Seed diset: (%d, %d)", tx, ty)) end
+    print(string.format("[PnB UI] 🌱 Pos Drop Seed diatur ke: (%d, %d)", tx, ty))
 end)
 
 seedIdInput.FocusLost:Connect(function()
@@ -3788,8 +3997,10 @@ local function applyManualSeed()
 end
 seedXInput.FocusLost:Connect(applyManualSeed)
 seedYInput.FocusLost:Connect(applyManualSeed)
+end
 
 -- ================== FITUR AUTO RESTOCK & DOOR POS ==================
+do
 local restockFrame = Instance.new("Frame")
 restockFrame.Name = "RestockFrame"
 restockFrame.Size = UDim2.new(1, -24, 0, 102)
@@ -3960,6 +4171,8 @@ standBtn.MouseButton1Click:Connect(function()
     state.standPos = {x = tx, y = ty}
     if genv.AutoBreakCustom then genv.AutoBreakCustom.StandPos = state.standPos end
     updatePosUI()
+    if updateStatusLabel then updateStatusLabel(string.format("📍 Pos Berdiri diset: (%d, %d)", tx, ty)) end
+    print(string.format("[PnB UI] 📍 Pos Berdiri diatur ke: (%d, %d)", tx, ty))
 end)
 
 stockBtn.MouseButton1Click:Connect(function()
@@ -3968,6 +4181,8 @@ stockBtn.MouseButton1Click:Connect(function()
     state.stockPos = {x = tx, y = ty}
     if genv.AutoBreakCustom then genv.AutoBreakCustom.StockPos = state.stockPos end
     updatePosUI()
+    if updateStatusLabel then updateStatusLabel(string.format("📦 Pos Stok diset: (%d, %d)", tx, ty)) end
+    print(string.format("[PnB UI] 📦 Pos Stok diatur ke: (%d, %d)", tx, ty))
 end)
 
 doorBtn.MouseButton1Click:Connect(function()
@@ -3976,6 +4191,8 @@ doorBtn.MouseButton1Click:Connect(function()
     state.doorPos = {x = tx, y = ty}
     if genv.AutoBreakCustom then genv.AutoBreakCustom.DoorPos = state.doorPos end
     updatePosUI()
+    if updateStatusLabel then updateStatusLabel(string.format("🚪 Pos Door diset: (%d, %d)", tx, ty)) end
+    print(string.format("[PnB UI] 🚪 Pos Door diatur ke: (%d, %d)", tx, ty))
 end)
 
 local function applyManualStand()
@@ -4016,11 +4233,13 @@ local function applyManualDoor()
 end
 doorXInput.FocusLost:Connect(applyManualDoor)
 doorYInput.FocusLost:Connect(applyManualDoor)
+end
 
 -- ================== FITUR AUTO REJOIN & RESUME WORLD ==================
+do
 local rejoinFrame = Instance.new("Frame")
 rejoinFrame.Name = "RejoinFrame"
-rejoinFrame.Size = UDim2.new(1, -24, 0, 48)
+rejoinFrame.Size = UDim2.new(1, -24, 0, 72)
 rejoinFrame.Position = UDim2.fromOffset(12, 608)
 rejoinFrame.BackgroundTransparency = 1
 rejoinFrame.Parent = scrollFrame
@@ -4038,16 +4257,58 @@ local rjCorner = Instance.new("UICorner")
 rjCorner.CornerRadius = UDim.new(0, 4)
 rjCorner.Parent = rejoinToggleBtn
 
+local worldRow = Instance.new("Frame")
+worldRow.Size = UDim2.new(1, 0, 0, 22)
+worldRow.Position = UDim2.fromOffset(0, 27)
+worldRow.BackgroundTransparency = 1
+worldRow.Parent = rejoinFrame
+
+local worldLbl = Instance.new("TextLabel")
+worldLbl.Size = UDim2.fromOffset(48, 22)
+worldLbl.Position = UDim2.new(0, 0, 0, 0)
+worldLbl.Text = "Target:"
+worldLbl.TextColor3 = Color3.fromRGB(200, 205, 220)
+worldLbl.Font = Enum.Font.GothamBold
+worldLbl.TextSize = 10
+worldLbl.TextXAlignment = Enum.TextXAlignment.Left
+worldLbl.BackgroundTransparency = 1
+worldLbl.Parent = worldRow
+
+local worldInput = Instance.new("TextBox")
+worldInput.Size = UDim2.new(1, -52, 1, 0)
+worldInput.Position = UDim2.fromOffset(52, 0)
+worldInput.BackgroundColor3 = Color3.fromRGB(32, 35, 45)
+worldInput.TextColor3 = Color3.fromRGB(52, 211, 153)
+worldInput.Font = Enum.Font.GothamBold
+worldInput.TextSize = 10
+worldInput.ClearTextOnFocus = false
+worldInput.Text = state.savedWorldName or ""
+worldInput.PlaceholderText = "Nama World Target..."
+worldInput.Parent = worldRow
+addCorner(worldInput, 4)
+addStroke(worldInput, Color3.fromRGB(55, 60, 75), 1)
+
 local rejoinStatusLabel = Instance.new("TextLabel")
-rejoinStatusLabel.Size = UDim2.new(1, 0, 0, 18)
-rejoinStatusLabel.Position = UDim2.fromOffset(0, 26)
+rejoinStatusLabel.Size = UDim2.new(1, 0, 0, 16)
+rejoinStatusLabel.Position = UDim2.fromOffset(0, 52)
 rejoinStatusLabel.TextColor3 = Color3.fromRGB(160, 175, 205)
 rejoinStatusLabel.TextSize = 9
 rejoinStatusLabel.Font = Enum.Font.GothamMedium
 rejoinStatusLabel.BackgroundTransparency = 1
 rejoinStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-rejoinStatusLabel.Text = string.format("World: %s | Auto-Warp Door -> Jalan ke StandPos", state.savedWorldName or "---")
+rejoinStatusLabel.Text = string.format("World: %s | Auto-Warp -> Jalan ke StandPos", state.savedWorldName or "---")
 rejoinStatusLabel.Parent = rejoinFrame
+
+worldInput.FocusLost:Connect(function()
+    if #worldInput.Text > 0 then
+        local wUp = string.upper(worldInput.Text)
+        state.savedWorldName = wUp
+        genv.PnB_SavedWorld = wUp
+        if genv.AutoBreakCustom then genv.AutoBreakCustom.SavedWorld = wUp end
+        worldInput.Text = wUp
+        rejoinStatusLabel.Text = string.format("World: %s | Auto-Warp -> Jalan ke StandPos", wUp)
+    end
+end)
 
 rejoinToggleBtn.MouseButton1Click:Connect(function()
     elevate()
@@ -4058,8 +4319,9 @@ rejoinToggleBtn.MouseButton1Click:Connect(function()
     local wName = getCurrentWorldName()
     if wName and #wName > 0 then
         state.savedWorldName = wName
+        worldInput.Text = wName
     end
-    rejoinStatusLabel.Text = string.format("World: %s | Auto-Warp Door -> Jalan ke StandPos", state.savedWorldName or "---")
+    rejoinStatusLabel.Text = string.format("World: %s | Auto-Warp -> Jalan ke StandPos", state.savedWorldName or "---")
 
     if state.autoRejoinWorld then
         if startRejoinWatchdog then startRejoinWatchdog() end
@@ -4071,7 +4333,7 @@ end)
 
 local shieldLabel = Instance.new("TextLabel")
 shieldLabel.Size = UDim2.new(1, -24, 0, 16)
-shieldLabel.Position = UDim2.fromOffset(12, 664)
+shieldLabel.Position = UDim2.fromOffset(12, 688)
 shieldLabel.Text = "🛡️ Shield: Anti-AFK (20m) + Anti-Staff"
 shieldLabel.TextColor3 = Color3.fromRGB(52, 211, 153)
 shieldLabel.Font = Enum.Font.GothamMedium
@@ -4082,7 +4344,7 @@ shieldLabel.Parent = scrollFrame
 
 local footer = Instance.new("TextLabel")
 footer.Size = UDim2.new(1, -24, 0, 16)
-footer.Position = UDim2.fromOffset(12, 684)
+footer.Position = UDim2.fromOffset(12, 708)
 footer.Text = "Auto Claim: 100% Instan Tanpa Gerak (Per-Balok)"
 footer.TextColor3 = Color3.fromRGB(120, 125, 140)
 footer.Font = Enum.Font.Gotham
@@ -4096,6 +4358,7 @@ bottomSpacer.Size = UDim2.new(1, -24, 0, 20)
 bottomSpacer.Position = UDim2.fromOffset(12, 704)
 bottomSpacer.BackgroundTransparency = 1
 bottomSpacer.Parent = scrollFrame
+end
 
 -- Action helpers untuk testing dan integrasi programmatic
 genv.PnB_Actions = {
@@ -4104,6 +4367,15 @@ genv.PnB_Actions = {
         if meta then
             state.selectedBlockId = id
             state.selectedBlockName = meta.name
+            local matchSeed = findMatchingSeedId(id)
+            state.targetSeedId = matchSeed
+            if genv.AutoBreakCustom then
+                genv.AutoBreakCustom.TargetSeedID = matchSeed and tostring(matchSeed) or nil
+            end
+            if seedIdInput then
+                seedIdInput.Text = matchSeed and tostring(matchSeed) or ""
+            end
+            if updateSeedUI then updateSeedUI() end
             if updatePickButton then updatePickButton() end
             return true
         end
