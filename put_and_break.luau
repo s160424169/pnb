@@ -958,20 +958,32 @@ resolveWorldNavFunctions()
 
 local function isPlayerInWorld()
     local pGui = lp:FindFirstChild("PlayerGui")
-    if pGui then
-        local mGui = pGui:FindFirstChild("MenuGui")
-        local mFrame = mGui and mGui:FindFirstChild("Menu")
+    if not pGui then return false end
+
+    -- 1. Cek apakah MenuGui sedang aktif/tampil (Main Menu / Lobby)
+    local mGui = pGui:FindFirstChild("MenuGui")
+    if mGui and mGui.Enabled == true then
+        local mFrame = mGui:FindFirstChild("Menu")
         if mFrame and mFrame.Visible == true then
             return false
         end
-        local gGui = pGui:FindFirstChild("GameGui")
-        local wFrame = gGui and gGui:FindFirstChild("World")
-        if wFrame and wFrame.Visible == true then
-            return true
-        end
     end
-    local w = World or findWorldFromAnySource()
-    return (w and type(w.name) == "string" and #w.name > 0) or false
+
+    -- 2. Cek apakah GameGui.World sedang tampil (World Gameplay Viewport)
+    local gGui = pGui:FindFirstChild("GameGui")
+    if not gGui then return false end
+    local wFrame = gGui:FindFirstChild("World")
+    if not wFrame or wFrame.Visible ~= true then
+        return false
+    end
+
+    -- 3. Cek karakter dan HumanoidRootPart
+    local char = lp.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then
+        return false
+    end
+
+    return true
 end
 
 local function getCurrentWorldName()
@@ -999,7 +1011,17 @@ local function attemptWarpWorld(targetWorld)
     elevate()
     resolveWorldNavFunctions()
 
-    -- Layer 1: Panggilan fungsi engine resmi (World.enter, World.warp, enterWorld, warp, enter)
+    -- Layer 1: RemoteFunction Resmi Growblox Engine (WorldRemotes.EnterWorld)
+    pcall(function()
+        local rep = game:GetService("ReplicatedStorage")
+        local wr = rep:FindFirstChild("WorldRemotes") or rep:WaitForChild("WorldRemotes", 2)
+        local ew = wr and wr:FindFirstChild("EnterWorld")
+        if ew and ew:IsA("RemoteFunction") then
+            ew:InvokeServer(targetWorld)
+        end
+    end)
+
+    -- Layer 2: Panggilan fungsi engine resmi (World.enter, World.warp, enterWorld, warp, enter)
     local w = World or findWorldFromAnySource()
     if w and w.enter then pcall(w.enter, targetWorld) end
     if w and w.warp then pcall(w.warp, targetWorld) end
@@ -1007,7 +1029,7 @@ local function attemptWarpWorld(targetWorld)
     if warpFn then pcall(warpFn, targetWorld) end
     if enterFn then pcall(enterFn, targetWorld) end
 
-    -- Layer 2: Chat warp command (/warp <world>)
+    -- Layer 3: Chat warp command (/warp <world>)
     pcall(function()
         local tcs = game:GetService("TextChatService")
         if tcs and tcs.TextChannels and tcs.TextChannels:FindFirstChild("RBXGeneral") then
@@ -1022,33 +1044,34 @@ local function attemptWarpWorld(targetWorld)
         end
     end)
 
-    -- Layer 3: CoreGui Auto-Reconnect (Mencegah Roblox Error 277 / 268)
-    pcall(function()
-        local promptGui = game:GetService("CoreGui")("RobloxPromptGui")
-        if promptGui then
-            local promptOverlay = promptGui:FindFirstChild("promptOverlay")
-            local errPrompt = promptOverlay and promptOverlay:FindFirstChild("ErrorPrompt")
-            if errPrompt then
-                local btn = errPrompt:FindFirstChild("ButtonPrimary") or errPrompt:FindFirstChild("ReconnectButton", true)
-                if btn and btn:IsA("GuiButton") then
-                    local pos = btn.AbsolutePosition
-                    VirtualInputManager:SendMouseButtonEvent(pos.X + 20, pos.Y + 15, 0, true, game, 1)
-                    task.wait(0.05)
-                    VirtualInputManager:SendMouseButtonEvent(pos.X + 20, pos.Y + 15, 0, false, game, 1)
-                end
-            end
-        end
-    end)
-
     -- Layer 4: Input box di MenuGui jika pemain berada di tampilan menu
     pcall(function()
         local pGui = lp:FindFirstChild("PlayerGui")
         local mGui = pGui and pGui:FindFirstChild("MenuGui")
         if mGui then
-            local box = mGui:FindFirstChild("WorldName", true) or mGui:FindFirstChild("SearchBox", true) or mGui:FindFirstChild("TextBox", true)
+            local box = mGui:FindFirstChild("WorldName", true) or mGui:FindFirstChild("SearchBox", true) or mGui:FindFirstChild("WorldInput", true) or mGui:FindFirstChild("TextBox", true)
+            if not box then
+                for _, desc in ipairs(mGui:GetDescendants()) do
+                    if desc:IsA("TextBox") and desc.Visible and desc.AbsoluteSize.X > 50 then
+                        box = desc
+                        break
+                    end
+                end
+            end
             if box and box:IsA("TextBox") then
                 box.Text = targetWorld
-                local joinBtn = mGui:FindFirstChild("Join", true) or mGui:FindFirstChild("Warp", true) or mGui:FindFirstChild("Play", true)
+                local joinBtn = mGui:FindFirstChild("Join", true) or mGui:FindFirstChild("Warp", true) or mGui:FindFirstChild("Play", true) or mGui:FindFirstChild("Enter", true)
+                if not joinBtn then
+                    for _, desc in ipairs(mGui:GetDescendants()) do
+                        if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and desc.Visible and desc.AbsoluteSize.X > 40 then
+                            local t = string.lower(desc.Name .. " " .. (desc:IsA("TextButton") and desc.Text or ""))
+                            if string.find(t, "join") or string.find(t, "warp") or string.find(t, "play") or string.find(t, "enter") then
+                                joinBtn = desc
+                                break
+                            end
+                        end
+                    end
+                end
                 if joinBtn and (joinBtn:IsA("TextButton") or joinBtn:IsA("ImageButton")) then
                     pcall(function()
                         if type(firesignal) == "function" then
@@ -1059,6 +1082,24 @@ local function attemptWarpWorld(targetWorld)
                         task.wait(0.05)
                         VirtualInputManager:SendMouseButtonEvent(joinBtn.AbsolutePosition.X + 10, joinBtn.AbsolutePosition.Y + 10, 0, false, game, 1)
                     end)
+                end
+            end
+        end
+    end)
+
+    -- Layer 5: CoreGui Auto-Reconnect (Mencegah Roblox Error 277 / 268)
+    pcall(function()
+        local promptGui = game:GetService("CoreGui"):FindFirstChild("RobloxPromptGui")
+        if promptGui then
+            local promptOverlay = promptGui:FindFirstChild("promptOverlay")
+            local errPrompt = promptOverlay and promptOverlay:FindFirstChild("ErrorPrompt")
+            if errPrompt then
+                local btn = errPrompt:FindFirstChild("ButtonPrimary") or errPrompt:FindFirstChild("ReconnectButton", true)
+                if btn and btn:IsA("GuiButton") then
+                    local pos = btn.AbsolutePosition
+                    VirtualInputManager:SendMouseButtonEvent(pos.X + 20, pos.Y + 15, 0, true, game, 1)
+                    task.wait(0.05)
+                    VirtualInputManager:SendMouseButtonEvent(pos.X + 20, pos.Y + 15, 0, false, game, 1)
                 end
             end
         end
@@ -1854,8 +1895,9 @@ local function startPnBWorker()
             return
         end
 
-        local startAnchorX = debug.getupvalue(World.goTo, 1) or 0
-        local startAnchorY = debug.getupvalue(World.goTo, 2) or 0
+        rehookWorldPointers()
+        local startAnchorX = (World and World.goTo and debug.getupvalue(World.goTo, 1)) or 0
+        local startAnchorY = (World and World.goTo and debug.getupvalue(World.goTo, 2)) or 0
         local anchorTileX = math.floor(startAnchorX)
         local anchorTileY = math.floor(startAnchorY)
         local dir = (state.direction == "Kiri") and -1 or 1
@@ -1879,7 +1921,7 @@ local function startPnBWorker()
 
         if curTileX ~= anchorTileX or curTileY ~= anchorTileY or distFromCenter > 0.35 then
             if updateStatusLabel then updateStatusLabel(string.format("📍 Menuju Pos Berdiri (%d,%d)...", anchorTileX, anchorTileY)) end
-            walkToTile(anchorTileX, anchorTileY, 5.0)
+            walkToTile(anchorTileX, anchorTileY, 20.0)
         end
         sendKeySafe(Enum.KeyCode.A, false)
         sendKeySafe(Enum.KeyCode.D, false)
@@ -1915,6 +1957,7 @@ local function startPnBWorker()
         end
         safeAnchorX = (debug.getupvalue(World.goTo, 1)) or (anchorTileX + 0.50)
 
+        local emptyStockCount = 0
         local consecutiveFails = 0
         local lastWorldKeepAlive = os.clock()
 
@@ -1925,70 +1968,82 @@ local function startPnBWorker()
             if not isPlayerInWorld() or state.isRejoining then
                 task.wait(0.5)
             else
-
-            -- 🛡️ Keep-Alive Watchdog (Pukulan aktif mereset inactivity engine tanpa perlu gerak fisik)
-            if os.clock() - lastWorldKeepAlive >= 150 then
-                lastWorldKeepAlive = os.clock()
-            end
-
-            -- 🛡️ Real-Time Staff Guard (Pemeriksaan berkala setiap putaran PnB) hasStaffNow, staffNameNow = checkAnyStaffPresent()
-            if hasStaffNow then
-                state.autoPnB = false
-                sendKeySafe(Enum.KeyCode.A, false)
-                sendKeySafe(Enum.KeyCode.D, false)
-                if updatePnBButton then updatePnBButton() end
-                if updateStatusLabel then updateStatusLabel("🚨 STAF TERDETEKSI: " .. (staffNameNow or "Staff") .. "! (Safe Stop)") end
-                print("[PnB Shield] Staf terdeteksi di world (" .. tostring(staffNameNow) .. ")! Menghentikan PnB seketika demi keamanan.")
-                break
-            end
-
-            -- 🛡️ Safety Boundary & Auto-Walk to StandPos (aktif baik saat pergeseran maupun baru masuk world manual) not state.isRelocating then
-                local w = World or findWorldFromAnySource()
-                local liveX = (w and w.goTo and debug.getupvalue(w.goTo, 1)) or anchorTileX
-                local liveY = (w and w.goTo and debug.getupvalue(w.goTo, 2)) or anchorTileY
-                local targetX = state.standPos and state.standPos.x or anchorTileX
-                local targetY = state.standPos and state.standPos.y or anchorTileY
-                if math.abs(liveX - (targetX + 0.50)) > 1.8 or math.abs(math.floor(liveY) - targetY) > 1.5 then
-                    if updateStatusLabel then updateStatusLabel(string.format("🚶 Menuju Pos Berdiri (%d,%d)...", targetX, targetY)) end
-                    state.isRelocating = true
-                    walkToTile(targetX, targetY, 12.0)
-                    state.isRelocating = false
-                    anchorTileX = targetX
-                    anchorTileY = targetY
-                    safeAnchorX = targetX + 0.50
-                    local liveAfter = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
-                    if math.abs(liveAfter - safeAnchorX) > 0.10 then
-                        local alignKey = (liveAfter < safeAnchorX) and Enum.KeyCode.D or Enum.KeyCode.A
-                        local alignTimeout = os.clock() + 0.20
-                        sendKeySafe(alignKey, true)
-                        while os.clock() < alignTimeout do
-                            local cur = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
-                            if (alignKey == Enum.KeyCode.D and cur >= safeAnchorX) or (alignKey == Enum.KeyCode.A and cur <= safeAnchorX) then
-                                break
-                            end
-                            task.wait(0.01)
-                        end
-                        sendKeySafe(alignKey, false)
-                        pcall(function()
-                            local char = lp.Character
-                            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                            if hrp then hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0) end
-                        end)
-                        task.wait(0.02)
-                    end
-                    safeAnchorX = (debug.getupvalue(World.goTo, 1)) or (targetX + 0.50)
-                    task.wait(0.05)
+                -- 🛡️ Keep-Alive Watchdog
+                if os.clock() - lastWorldKeepAlive >= 150 then
+                    lastWorldKeepAlive = os.clock()
                 end
-            end
 
-            if not state.selectedBlockId or not state.selectedBlockName then
-                if updateStatusLabel then updateStatusLabel("Pilih item block terlebih dahulu!") end
-                state.autoPnB = false
-                if updatePnBButton then updatePnBButton() end
-                break
-            end
+                -- 🛡️ Real-Time Staff Guard (Pemeriksaan berkala setiap putaran PnB)
+                local hasStaffNow, staffNameNow = checkAnyStaffPresent()
+                if hasStaffNow then
+                    state.autoPnB = false
+                    sendKeySafe(Enum.KeyCode.A, false)
+                    sendKeySafe(Enum.KeyCode.D, false)
+                    if updatePnBButton then updatePnBButton() end
+                    if updateStatusLabel then updateStatusLabel("🚨 STAF TERDETEKSI: " .. (staffNameNow or "Staff") .. "! (Safe Stop)") end
+                    print("[PnB Shield] Staf terdeteksi di world (" .. tostring(staffNameNow) .. ")! Menghentikan PnB seketika demi keamanan.")
+                    break
+                end
 
-            local bp = refreshBackpackReference()
+                -- 🛡️ Safety Boundary & Auto-Walk to StandPos (aktif baik saat pergeseran maupun baru masuk world manual)
+                if not state.isRelocating then
+                    local w = World or findWorldFromAnySource()
+                    local liveX = (w and w.goTo and debug.getupvalue(w.goTo, 1))
+                    local liveY = (w and w.goTo and debug.getupvalue(w.goTo, 2))
+                    local targetX = state.standPos and state.standPos.x or anchorTileX
+                    local targetY = state.standPos and state.standPos.y or anchorTileY
+
+                    if liveX and liveY then
+                        local curLiveTileX = math.floor(liveX)
+                        local curLiveTileY = math.floor(liveY)
+                        local distFromCenter = math.abs(liveX - (targetX + 0.50))
+
+                        if curLiveTileX ~= targetX or math.abs(curLiveTileY - targetY) > 1 or distFromCenter > 0.45 then
+                            print(string.format("[PnB Position Check] Karakter di (%d, %d), Pos Berdiri (%d, %d). Berjalan ke Pos Berdiri...", curLiveTileX, curLiveTileY, targetX, targetY))
+                            if updateStatusLabel then
+                                updateStatusLabel(string.format("🚶 Menuju Pos Berdiri (%d,%d)...", targetX, targetY))
+                            end
+                            state.isRelocating = true
+                            walkToTile(targetX, targetY, 20.0)
+                            state.isRelocating = false
+                            anchorTileX = targetX
+                            anchorTileY = targetY
+                            safeAnchorX = targetX + 0.50
+
+                            local liveAfter = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
+                            if math.abs(liveAfter - safeAnchorX) > 0.10 then
+                                local alignKey = (liveAfter < safeAnchorX) and Enum.KeyCode.D or Enum.KeyCode.A
+                                local alignTimeout = os.clock() + 0.20
+                                sendKeySafe(alignKey, true)
+                                while os.clock() < alignTimeout do
+                                    local cur = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
+                                    if (alignKey == Enum.KeyCode.D and cur >= safeAnchorX) or (alignKey == Enum.KeyCode.A and cur <= safeAnchorX) then
+                                        break
+                                    end
+                                    task.wait(0.01)
+                                end
+                                sendKeySafe(alignKey, false)
+                                pcall(function()
+                                    local char = lp.Character
+                                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                                    if hrp then hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0) end
+                                end)
+                                task.wait(0.02)
+                            end
+                            safeAnchorX = (debug.getupvalue(World.goTo, 1)) or (targetX + 0.50)
+                            task.wait(0.05)
+                        end
+                    end
+                end
+
+                if not state.selectedBlockId or not state.selectedBlockName then
+                    if updateStatusLabel then updateStatusLabel("Pilih item block terlebih dahulu!") end
+                    state.autoPnB = false
+                    if updatePnBButton then updatePnBButton() end
+                    break
+                end
+
+                local bp = refreshBackpackReference()
 
             -- 🌱 FITUR AUTO DROP SEED (Drop saat seed mencapai 200 / ambang batas di koordinat tujuan)
             local sId = state.targetSeedId 
@@ -2190,11 +2245,18 @@ local function startPnBWorker()
             end
 
             if stock <= 0 then
-                if updateStatusLabel then updateStatusLabel("Block habis di backpack!") end
-                print("[PnB] Block habis di backpack!")
-                state.autoPnB = false
-                if updatePnBButton then updatePnBButton() end
-                break
+                emptyStockCount = emptyStockCount + 1
+                if emptyStockCount >= 4 then
+                    if updateStatusLabel then updateStatusLabel("Block habis di backpack!") end
+                    print("[PnB] Block habis di backpack!")
+                    state.autoPnB = false
+                    if updatePnBButton then updatePnBButton() end
+                    break
+                else
+                    task.wait(0.4)
+                end
+            else
+                emptyStockCount = 0
             end
 
             if updatePickButton then updatePickButton() end
@@ -2496,6 +2558,8 @@ local function startPnBWorker()
                 end
             end
 
+            end -- Tutup else (isPlayerInWorld and not state.isRejoining)
+
             task.wait(0.04 + (math.random(10, 25) / 1000))
         end
 
@@ -2580,7 +2644,7 @@ startRejoinWatchdog = function()
                         if updateStatusLabel then
                             updateStatusLabel(string.format("🚶 Menuju Pos Berdiri (%d, %d)...", stPos.x, stPos.y))
                         end
-                        walkToTile(stPos.x, stPos.y, 15.0)
+                        walkToTile(stPos.x, stPos.y, 20.0)
                         task.wait(0.3)
                     end
 
