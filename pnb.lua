@@ -1582,15 +1582,18 @@ if WorldRemotes and WorldRemotes:FindFirstChild("WorldNotice") then
     table.insert(state.connections, noticeConn)
 end
 
-if (TextChatService )("MessageReceived") then
-    local chatConn = (TextChatService ).MessageReceived:Connect(function(textChatMessage)
-        elevate()
-        if textChatMessage and textChatMessage.Text then
-            checkCaptchaClaim(textChatMessage.Text)
-        end
-    end)
-    table.insert(state.connections, chatConn)
-end
+pcall(function()
+    local tcs = TextChatService or game:GetService("TextChatService")
+    if tcs and tcs:FindFirstChild("MessageReceived") then
+        local chatConn = tcs.MessageReceived:Connect(function(textChatMessage)
+            elevate()
+            if textChatMessage and textChatMessage.Text then
+                checkCaptchaClaim(textChatMessage.Text)
+            end
+        end)
+        table.insert(state.connections, chatConn)
+    end
+end)
 
 if WorldRemotes and WorldRemotes:FindFirstChild("DropAdded") then
     local dropConn = WorldRemotes.DropAdded.OnClientEvent:Connect(function(...)
@@ -3116,7 +3119,7 @@ populateBlockPicker = function(query)
     end
 
     local q = query or (searchBox and searchBox.Text) or ""
-    local cleanQuery = string.lower(q)("%s+", "")
+    local cleanQuery = string.gsub(string.lower(q), "%s+", "")
 
     local bp = refreshBackpackReference()
     local bagStock = {}
@@ -3145,8 +3148,8 @@ populateBlockPicker = function(query)
         if not isPlaceableFarmableItem(id) then return end
         local it = ItemDB and ItemDB[id]
         local rawName = (it and it.name) or ("Item " .. id)
-        local cleanName = removeColorAndSymbols(rawName)()("%s+", "")
-        local rawLower = string.lower(rawName)("%s+", "")
+        local cleanName = string.gsub(removeColorAndSymbols(rawName), "%s+", "")
+        local rawLower = string.gsub(string.lower(rawName), "%s+", "")
 
         -- Filter jika ada pencarian query
         if cleanQuery ~= "" then
@@ -3193,8 +3196,8 @@ populateBlockPicker = function(query)
             if type(id) == "number" and type(it) == "table" and it.name and not addedIds[id] then
                 if isPlaceableFarmableItem(id) then
                     local rawName = it.name
-                    local cleanName = removeColorAndSymbols(rawName)()("%s+", "")
-                    local rawLower = string.lower(rawName)("%s+", "")
+                    local cleanName = string.gsub(removeColorAndSymbols(rawName), "%s+", "")
+                    local rawLower = string.gsub(string.lower(rawName), "%s+", "")
                     if string.find(rawLower, cleanQuery, 1, true) or string.find(cleanName, cleanQuery, 1, true) then
                         table.insert(dbMatches, id)
                         if #dbMatches >= 30 then break end
@@ -3332,7 +3335,7 @@ populateBlockPicker = function(query)
     scroll.CanvasSize = UDim2.new(0, 0, 0, foundCount * 40 + 10)
 end
 
-searchBox:GetPropertyChangedSignal("Text")(function()
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
     populateBlockPicker(searchBox.Text)
 end)
 
