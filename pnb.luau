@@ -32,7 +32,16 @@ local function sendKeySafe(key, isDown)
         VirtualInputManager:SendKeyEvent(isDown, key, false, game)
     end)
 end
-local lp = Players.LocalPlayer or Players:GetPlayers()[1]
+local lp = Players.LocalPlayer
+if not lp then
+    local lpWait = 0
+    repeat
+        task.wait(0.05)
+        lpWait = lpWait + 1
+        lp = Players.LocalPlayer
+    until lp or lpWait > 20 or #Players:GetPlayers() > 0
+    lp = lp or Players:GetPlayers()[1]
+end
 
 local r = require 
 local getconns = (getconnections or get_connections or function(...) return {} end) 
@@ -128,33 +137,35 @@ end
 
 local WorldRemotes = ReplicatedStorage:FindFirstChild("WorldRemotes") 
 
+local function isValidWorld(w)
+    if type(w) ~= "table" then return false end
+    if not rawget(w, "fg") or not rawget(w, "bg") then return false end
+    local goTo = rawget(w, "goTo")
+    if typeof(goTo) ~= "function" then return false end
+    local info = debug.getinfo(goTo)
+    if not info or info.nups < 2 then return false end
+    local ok1, val1 = pcall(debug.getupvalue, goTo, 1)
+    local ok2, val2 = pcall(debug.getupvalue, goTo, 2)
+    if not ok1 or not ok2 then return false end
+    if typeof(val1) ~= "number" or typeof(val2) ~= "number" then return false end
+    return true
+end
+
 local function findWorldFromAnySource()
-    if getgc then
-        local ok, gcList = pcall(getgc, true)
-        if ok and type(gcList) == "table" then
-            for _, v in ipairs(gcList) do
-                if type(v) == "table" and rawget(v, "fg") and rawget(v, "bg") and rawget(v, "goTo") and rawget(v, "touchBlocks") then
-                    return v
-                end
-            end
-        end
-    end
-    if getconnections and RunService then
-        local ok, rConns = pcall(getconnections, RunService.RenderStepped)
+    -- Priority 1: Scan RenderStepped connections (Live game step loop)
+    if getconns and RunService then
+        local ok, rConns = pcall(getconns, RunService.RenderStepped)
         if ok and rConns then
             for _, c in ipairs(rConns) do
                 local fn = c.Function
                 if fn and typeof(fn) == "function" then
                     for i = 1, debug.getinfo(fn).nups do
                         local up = debug.getupvalue(fn, i)
-                        if type(up) == "table" and rawget(up, "fg") and rawget(up, "bg") and rawget(up, "goTo") then
-                            return up
-                        elseif typeof(up) == "function" then
+                        if isValidWorld(up) then return up end
+                        if typeof(up) == "function" then
                             for j = 1, debug.getinfo(up).nups do
                                 local inUp = debug.getupvalue(up, j)
-                                if type(inUp) == "table" and rawget(inUp, "fg") and rawget(inUp, "bg") and rawget(inUp, "goTo") then
-                                    return inUp
-                                end
+                                if isValidWorld(inUp) then return inUp end
                             end
                         end
                     end
@@ -162,19 +173,20 @@ local function findWorldFromAnySource()
             end
         end
     end
-    if WorldRemotes and getconnections then
-        for _, child in ipairs(WorldRemotes:GetChildren()) do
+
+    -- Priority 2: WorldRemotes connections (TileChanged event connects to active client World)
+    local wr = WorldRemotes or ReplicatedStorage:FindFirstChild("WorldRemotes")
+    if wr and getconns then
+        for _, child in ipairs(wr:GetChildren()) do
             if child:IsA("RemoteEvent") then
-                local ok, conns = pcall(getconnections, child.OnClientEvent)
+                local ok, conns = pcall(getconns, child.OnClientEvent)
                 if ok and conns and #conns > 0 then
                     for _, c in ipairs(conns) do
                         local fn = c.Function
-                        if fn then
+                        if fn and typeof(fn) == "function" then
                             for i = 1, debug.getinfo(fn).nups do
                                 local up = debug.getupvalue(fn, i)
-                                if type(up) == "table" and rawget(up, "fg") and rawget(up, "bg") and rawget(up, "goTo") then
-                                    return up
-                                end
+                                if isValidWorld(up) then return up end
                             end
                         end
                     end
@@ -182,6 +194,34 @@ local function findWorldFromAnySource()
             end
         end
     end
+
+    -- Priority 3: Active closures from getgc(false) (hit, setTile, plantSeed)
+    if getgc then
+        local ok, fns = pcall(getgc, false)
+        if ok and type(fns) == "table" then
+            for _, fn in ipairs(fns) do
+                if typeof(fn) == "function" then
+                    local name = debug.getinfo(fn).name
+                    if name == "hit" or name == "setTile" or name == "plantSeed" then
+                        for _, up in ipairs(debug.getupvalues(fn)) do
+                            if isValidWorld(up) then return up end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Priority 4: getgc(true) tables filtered strictly through isValidWorld
+    if getgc then
+        local ok, gcList = pcall(getgc, true)
+        if ok and type(gcList) == "table" then
+            for _, v in ipairs(gcList) do
+                if isValidWorld(v) then return v end
+            end
+        end
+    end
+
     return nil
 end
 
@@ -1109,7 +1149,8 @@ local function attemptWarpWorld(targetWorld)
 end
 
 local function rehookWorldPointers()
-    World = findWorldFromAnySource()
+    local freshW = findWorldFromAnySource()
+    if freshW then World = freshW end
     if World and World.dropList then
         pcall(function()
             dropsTable = debug.getupvalue(World.dropList, 1)
@@ -1912,8 +1953,17 @@ local function startPnBWorker()
         end
 
         rehookWorldPointers()
-        local startAnchorX = (World and World.goTo and debug.getupvalue(World.goTo, 1)) or 0
-        local startAnchorY = (World and World.goTo and debug.getupvalue(World.goTo, 2)) or 0
+        local startAnchorX = 0
+        local startAnchorY = 0
+        if isValidWorld(World) then
+            local ok1, val1 = pcall(debug.getupvalue, World.goTo, 1)
+            local ok2, val2 = pcall(debug.getupvalue, World.goTo, 2)
+            if ok1 and typeof(val1) == "number" then startAnchorX = val1 end
+            if ok2 and typeof(val2) == "number" then startAnchorY = val2 end
+        elseif state.standPos then
+            startAnchorX = state.standPos.x + 0.50
+            startAnchorY = state.standPos.y + 0.99
+        end
         local anchorTileX = math.floor(startAnchorX)
         local anchorTileY = math.floor(startAnchorY)
         local dir = (state.direction == "Kiri") and -1 or 1
@@ -3910,17 +3960,20 @@ end
 -- =========================================================================
 local function getAccurateTilePos()
     elevate()
-    local w = World or findWorldFromAnySource()
-    if w and w.goTo then
-        local ok1, curX = pcall(debug.getupvalue, w.goTo, 1)
-        local ok2, curY = pcall(debug.getupvalue, w.goTo, 2)
+    if not isValidWorld(World) then
+        local fresh = findWorldFromAnySource()
+        if fresh then World = fresh end
+    end
+    if isValidWorld(World) then
+        local ok1, curX = pcall(debug.getupvalue, World.goTo, 1)
+        local ok2, curY = pcall(debug.getupvalue, World.goTo, 2)
         if ok1 and ok2 and typeof(curX) == "number" and typeof(curY) == "number" then
             return math.floor(curX), math.floor(curY)
         end
     end
     if hitFn then
         for _, up in ipairs(debug.getupvalues(hitFn)) do
-            if type(up) == "table" and rawget(up, "goTo") then
+            if isValidWorld(up) then
                 local ok1, curX = pcall(debug.getupvalue, up.goTo, 1)
                 local ok2, curY = pcall(debug.getupvalue, up.goTo, 2)
                 if ok1 and ok2 and typeof(curX) == "number" and typeof(curY) == "number" then
@@ -3929,7 +3982,7 @@ local function getAccurateTilePos()
             end
         end
     end
-    local char = lp.Character
+    local char = lp and lp.Character
     local hrp = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
     if hrp then
         local ts = TileSize or 64
