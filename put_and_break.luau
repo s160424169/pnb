@@ -902,7 +902,6 @@ local state = {
     nextDropAttempt = 0,
     standPos = nil :: {x: number, y: number}?,
     stockPos = nil :: {x: number, y: number}?,
-    doorPos = nil :: {x: number, y: number}?,
     isRelocating = false,
     isRejoining = false,
     pnbThread = nil :: thread?,
@@ -923,7 +922,6 @@ if genv.AutoBreakCustom.SeedDropPos then state.seedDropPos = genv.AutoBreakCusto
 if genv.AutoBreakCustom.TargetSeedID then state.targetSeedId = tonumber(genv.AutoBreakCustom.TargetSeedID) end
 if genv.AutoBreakCustom.StandPos then state.standPos = genv.AutoBreakCustom.StandPos end
 if genv.AutoBreakCustom.StockPos then state.stockPos = genv.AutoBreakCustom.StockPos end
-if genv.AutoBreakCustom.DoorPos then state.doorPos = genv.AutoBreakCustom.DoorPos end
 if genv.AutoBreakCustom.AutoRejoinWorld ~= nil then state.autoRejoinWorld = genv.AutoBreakCustom.AutoRejoinWorld end
 if genv.AutoBreakCustom.SavedWorld then state.savedWorldName = genv.AutoBreakCustom.SavedWorld end
 
@@ -958,40 +956,42 @@ local function resolveWorldNavFunctions()
 end
 resolveWorldNavFunctions()
 
-local function getCurrentWorldName(): string?
-    resolveWorldNavFunctions()
-    if currentWorldFn then
-        local ok, w = pcall(currentWorldFn)
-        if ok and type(w) == "string" and #w > 0 then return w end
-    end
-    if World and World.name and #World.name > 0 then return World.name end
-    return state.savedWorldName
-end
-
-local function isPlayerCurrentlyInTargetWorld(targetWorld: string?): boolean
-    if not targetWorld or #targetWorld == 0 then return false end
-    -- 1. Cek MenuGui / GameGui visibility
+local function isPlayerInWorld(): boolean
     local pGui = lp:FindFirstChild("PlayerGui")
     if pGui then
         local mGui = pGui:FindFirstChild("MenuGui")
         local mFrame = mGui and mGui:FindFirstChild("Menu")
         if mFrame and mFrame.Visible == true then
-            return false -- Pasti sedang di Main Menu (kicked)
+            return false
+        end
+        local gGui = pGui:FindFirstChild("GameGui")
+        local wFrame = gGui and gGui:FindFirstChild("World")
+        if wFrame and wFrame.Visible == true then
+            return true
         end
     end
-    -- 2. Cek nama world aktif dari World object atau currentWorldFn
     local w = World or findWorldFromAnySource()
-    local wName = (w and w.name and #w.name > 0 and w.name)
-    if not wName and currentWorldFn then
-        local ok, name = pcall(currentWorldFn)
-        if ok and type(name) == "string" and #name > 0 then
-            wName = name
-        end
+    return (w and type(w.name) == "string" and #w.name > 0) or false
+end
+
+local function getCurrentWorldName(): string?
+    if not isPlayerInWorld() then return nil end
+    local w = World or findWorldFromAnySource()
+    if w and type(w.name) == "string" and #w.name > 0 then return w.name end
+    resolveWorldNavFunctions()
+    if currentWorldFn then
+        local ok, wName = pcall(currentWorldFn)
+        if ok and type(wName) == "string" and #wName > 0 then return wName end
     end
-    if not wName or #wName == 0 then
-        return false
-    end
-    return string.upper(wName) == string.upper(targetWorld)
+    return nil
+end
+
+local function isPlayerCurrentlyInTargetWorld(targetWorld: string?): boolean
+    if not targetWorld or #targetWorld == 0 then return false end
+    if not isPlayerInWorld() then return false end
+    local cur = getCurrentWorldName()
+    if not cur or #cur == 0 then return false end
+    return string.upper(cur) == string.upper(targetWorld)
 end
 
 local function attemptWarpWorld(targetWorld: string)
@@ -1045,12 +1045,16 @@ local function attemptWarpWorld(targetWorld: string)
         local pGui = lp:FindFirstChild("PlayerGui")
         local mGui = pGui and pGui:FindFirstChild("MenuGui")
         if mGui then
-            local box = mGui:FindFirstChild("WorldName", true) or mGui:FindFirstChild("SearchBox", true)
+            local box = mGui:FindFirstChild("WorldName", true) or mGui:FindFirstChild("SearchBox", true) or mGui:FindFirstChild("TextBox", true)
             if box and box:IsA("TextBox") then
                 box.Text = targetWorld
                 local joinBtn = mGui:FindFirstChild("Join", true) or mGui:FindFirstChild("Warp", true) or mGui:FindFirstChild("Play", true)
                 if joinBtn and (joinBtn:IsA("TextButton") or joinBtn:IsA("ImageButton")) then
                     pcall(function()
+                        if type(firesignal) == "function" then
+                            pcall(firesignal, joinBtn.MouseButton1Click)
+                            pcall(firesignal, joinBtn.Activated)
+                        end
                         VirtualInputManager:SendMouseButtonEvent(joinBtn.AbsolutePosition.X + 10, joinBtn.AbsolutePosition.Y + 10, 0, true, game, 1)
                         task.wait(0.05)
                         VirtualInputManager:SendMouseButtonEvent(joinBtn.AbsolutePosition.X + 10, joinBtn.AbsolutePosition.Y + 10, 0, false, game, 1)
@@ -1917,7 +1921,8 @@ local function startPnBWorker()
         while state.autoPnB do
             elevate()
 
-            if state.isRejoining then
+            -- 🛡️ Jika pemain sedang di luar world (lobby/menu) atau sedang proses rejoining:
+            if not isPlayerInWorld() or state.isRejoining then
                 task.wait(0.5)
                 continue
             end
@@ -1939,16 +1944,17 @@ local function startPnBWorker()
                 break
             end
 
-            -- 🛡️ Safety Boundary & Auto-Return to StandPos:
+            -- 🛡️ Safety Boundary & Auto-Walk to StandPos (aktif baik saat pergeseran maupun baru masuk world manual):
             if not state.isRelocating then
-                local liveX = (World and World.goTo and debug.getupvalue(World.goTo, 1)) or anchorTileX
-                local liveY = (World and World.goTo and debug.getupvalue(World.goTo, 2)) or anchorTileY
+                local w = World or findWorldFromAnySource()
+                local liveX = (w and w.goTo and debug.getupvalue(w.goTo, 1)) or anchorTileX
+                local liveY = (w and w.goTo and debug.getupvalue(w.goTo, 2)) or anchorTileY
                 local targetX = state.standPos and state.standPos.x or anchorTileX
                 local targetY = state.standPos and state.standPos.y or anchorTileY
-                if math.abs(liveX - targetX) > 2.5 or math.abs(liveY - targetY) > 2.5 then
+                if math.abs(liveX - (targetX + 0.50)) > 1.8 or math.abs(math.floor(liveY) - targetY) > 1.5 then
                     if updateStatusLabel then updateStatusLabel(string.format("🚶 Menuju Pos Berdiri (%d,%d)...", targetX, targetY)) end
                     state.isRelocating = true
-                    walkToTile(targetX, targetY, 6.0)
+                    walkToTile(targetX, targetY, 12.0)
                     state.isRelocating = false
                     anchorTileX = targetX
                     anchorTileY = targetY
@@ -2515,21 +2521,20 @@ startRejoinWatchdog = function()
 
     state.rejoinThread = task.spawn(function()
         elevate()
-        print("[PnB AutoRejoin] Watchdog Door-to-Stand Rejoin aktif.")
+        print("[PnB AutoRejoin] Watchdog Auto Rejoin & Resume aktif.")
         local outsideWorldSeconds = 0
 
         while state.autoRejoinWorld do
             task.wait(1.0)
             if not state.autoRejoinWorld then break end
 
-            local currentW = (World and World.name and #World.name > 0 and World.name) or (getCurrentWorldName and getCurrentWorldName()) or ""
-            local targetWorld = state.savedWorldName or genv.PnB_SavedWorld
-            if currentW ~= "" then
+            local currentW = getCurrentWorldName()
+            if currentW and #currentW > 0 then
                 state.savedWorldName = currentW
                 genv.PnB_SavedWorld = currentW
-                targetWorld = currentW
-                outsideWorldSeconds = 0
             end
+
+            local targetWorld = state.savedWorldName or genv.PnB_SavedWorld
 
             if targetWorld and #targetWorld > 0 and not state.isRejoining then
                 local inTargetWorld = isPlayerCurrentlyInTargetWorld(targetWorld)
@@ -2540,25 +2545,18 @@ startRejoinWatchdog = function()
                     outsideWorldSeconds = outsideWorldSeconds + 1
                 end
 
-                -- Jika terbukti berada di luar target world selama >= 2 detik berturut-turut:
+                -- Jika terdeteksi di luar target world selama >= 2 detik berturut-turut:
                 if outsideWorldSeconds >= 2 and not inTargetWorld then
                     state.isRejoining = true
-                    local wasPnBRunning = state.autoPnB
-                    print(string.format("[PnB AutoRejoin] Terdeteksi keluar dari world! Target: %s. Menunggu 2.5s lalu masuk kembali...", targetWorld))
+                    print(string.format("[PnB AutoRejoin] Terdeteksi keluar dari world! Target: %s. Melakukan warp masuk kembali...", targetWorld))
 
                     if updateStatusLabel then
                         updateStatusLabel(string.format("🔄 Rejoining world %s...", targetWorld))
                     end
 
-                    -- Hentikan sementara PnB worker thread jika sedang berjalan
-                    if state.pnbThread then
-                        task.cancel(state.pnbThread)
-                        state.pnbThread = nil
-                    end
+                    task.wait(1.5)
 
-                    task.wait(2.5)
-
-                    -- 1. Upaya warp/masuk kembali via multi-layer (engine, chat /warp, prompt reconnect)
+                    -- 1. Upaya warp/masuk kembali
                     attemptWarpWorld(targetWorld)
 
                     -- 2. Tunggu proses loading world selesai (maksimal 20 detik)
@@ -2574,19 +2572,14 @@ startRejoinWatchdog = function()
                         end
                     end
 
-                    -- 3. Tunggu 2.5 detik agar map & karakter ter-render sempurna di Door
-                    task.wait(2.5)
+                    -- 3. Tunggu 2 detik agar map & karakter ter-render sempurna
+                    task.wait(2.0)
                     rehookWorldPointers()
 
-                    local w = World or findWorldFromAnySource()
-                    local curPx = (w and w.goTo and debug.getupvalue(w.goTo, 1)) or 0
-                    local curPy = (w and w.goTo and debug.getupvalue(w.goTo, 2)) or 0
-                    print(string.format("[PnB AutoRejoin] Berhasil masuk ke world %s! Posisi spawn/door: (%.1f, %.1f)", targetWorld, curPx, curPy))
-
-                    -- 4. Jalan dari Door menuju Posisi Berdiri (StandPos)
+                    -- 4. Jalan dari Spawn menuju Posisi Berdiri (StandPos)
                     local stPos = state.standPos or (genv.AutoBreakCustom and genv.AutoBreakCustom.StandPos)
                     if stPos then
-                        print(string.format("[PnB AutoRejoin] Berjalan dari Door (%.1f, %.1f) ke StandPos: (%d, %d)...", curPx, curPy, stPos.x, stPos.y))
+                        print(string.format("[PnB AutoRejoin] Berjalan dari Spawn ke StandPos: (%d, %d)...", stPos.x, stPos.y))
                         if updateStatusLabel then
                             updateStatusLabel(string.format("🚶 Menuju Pos Berdiri (%d, %d)...", stPos.x, stPos.y))
                         end
@@ -2596,17 +2589,6 @@ startRejoinWatchdog = function()
 
                     outsideWorldSeconds = 0
                     state.isRejoining = false
-
-                    -- 5. Lanjutkan Auto PnB kembali secara otomatis jika sebelumnya aktif
-                    if wasPnBRunning or state.resumePnBOnRejoin then
-                        print("[PnB AutoRejoin] Posisi berdiri tercapai. Melanjutkan Auto PnB...")
-                        state.autoPnB = true
-                        if updatePnBButton then updatePnBButton() end
-                        if updateStatusLabel then updateStatusLabel("Status: Aktif (Auto PnB)") end
-                        startPnBWorker()
-                    else
-                        if updateStatusLabel then updateStatusLabel("Status: Berhenti di StandPos") end
-                    end
                 end
             end
         end
@@ -4003,7 +3985,7 @@ end
 do
 local restockFrame = Instance.new("Frame")
 restockFrame.Name = "RestockFrame"
-restockFrame.Size = UDim2.new(1, -24, 0, 102)
+restockFrame.Size = UDim2.new(1, -24, 0, 78)
 restockFrame.Position = UDim2.fromOffset(12, 500)
 restockFrame.BackgroundTransparency = 1
 restockFrame.Parent = scrollFrame
@@ -4092,52 +4074,10 @@ local skCornerY = Instance.new("UICorner")
 skCornerY.CornerRadius = UDim.new(0, 4)
 skCornerY.Parent = stockYInput
 
--- Row 3: Posisi Door (Warp & Rejoin Point)
-local doorBtn = Instance.new("TextButton")
-doorBtn.Size = UDim2.new(0.48, -4, 0, 22)
-doorBtn.Position = UDim2.new(0, 0, 0, 52)
-doorBtn.Text = "🚪 Set Pos Door"
-doorBtn.BackgroundColor3 = Color3.fromRGB(40, 110, 180)
-doorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-doorBtn.Font = Enum.Font.GothamBold
-doorBtn.TextSize = 10
-doorBtn.Parent = restockFrame
-local drCorner = Instance.new("UICorner")
-drCorner.CornerRadius = UDim.new(0, 4)
-drCorner.Parent = doorBtn
-
-local doorXInput = Instance.new("TextBox")
-doorXInput.Size = UDim2.new(0.26, -3, 0, 22)
-doorXInput.Position = UDim2.new(0.48, 0, 0, 52)
-doorXInput.PlaceholderText = "X"
-doorXInput.Text = state.doorPos and tostring(state.doorPos.x) or ""
-doorXInput.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
-doorXInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-doorXInput.Font = Enum.Font.GothamMedium
-doorXInput.TextSize = 10
-doorXInput.Parent = restockFrame
-local drCornerX = Instance.new("UICorner")
-drCornerX.CornerRadius = UDim.new(0, 4)
-drCornerX.Parent = doorXInput
-
-local doorYInput = Instance.new("TextBox")
-doorYInput.Size = UDim2.new(0.26, -3, 0, 22)
-doorYInput.Position = UDim2.new(0.74, 0, 0, 52)
-doorYInput.PlaceholderText = "Y"
-doorYInput.Text = state.doorPos and tostring(state.doorPos.y) or ""
-doorYInput.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
-doorYInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-doorYInput.Font = Enum.Font.GothamMedium
-doorYInput.TextSize = 10
-doorYInput.Parent = restockFrame
-local drCornerY = Instance.new("UICorner")
-drCornerY.CornerRadius = UDim.new(0, 4)
-drCornerY.Parent = doorYInput
-
--- Row 4: Label Status Posisi
+-- Row 3: Label Status Posisi
 local posStatusLabel = Instance.new("TextLabel")
 posStatusLabel.Size = UDim2.new(1, 0, 0, 18)
-posStatusLabel.Position = UDim2.fromOffset(0, 78)
+posStatusLabel.Position = UDim2.fromOffset(0, 52)
 posStatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 posStatusLabel.TextSize = 9
 posStatusLabel.Font = Enum.Font.GothamMedium
@@ -4148,8 +4088,7 @@ posStatusLabel.Parent = restockFrame
 updatePosUI = function()
     local sp = state.standPos or (genv.AutoBreakCustom and genv.AutoBreakCustom.StandPos)
     local st = state.stockPos or (genv.AutoBreakCustom and genv.AutoBreakCustom.StockPos)
-    local dp = state.doorPos or (genv.AutoBreakCustom and genv.AutoBreakCustom.DoorPos)
-    posStatusLabel.Text = string.format("Berdiri:%s | Stok:%s | Door:%s", sp and string.format("(%d,%d)", sp.x, sp.y) or "---", st and string.format("(%d,%d)", st.x, st.y) or "---", dp and string.format("(%d,%d)", dp.x, dp.y) or "---")
+    posStatusLabel.Text = string.format("Berdiri:%s | Stok:%s", sp and string.format("(%d,%d)", sp.x, sp.y) or "---", st and string.format("(%d,%d)", st.x, st.y) or "---")
     if sp and standXInput and standYInput then
         if not standXInput:IsFocused() then standXInput.Text = tostring(sp.x) end
         if not standYInput:IsFocused() then standYInput.Text = tostring(sp.y) end
@@ -4157,10 +4096,6 @@ updatePosUI = function()
     if st and stockXInput and stockYInput then
         if not stockXInput:IsFocused() then stockXInput.Text = tostring(st.x) end
         if not stockYInput:IsFocused() then stockYInput.Text = tostring(st.y) end
-    end
-    if dp and doorXInput and doorYInput then
-        if not doorXInput:IsFocused() then doorXInput.Text = tostring(dp.x) end
-        if not doorYInput:IsFocused() then doorYInput.Text = tostring(dp.y) end
     end
 end
 updatePosUI()
@@ -4183,16 +4118,6 @@ stockBtn.MouseButton1Click:Connect(function()
     updatePosUI()
     if updateStatusLabel then updateStatusLabel(string.format("📦 Pos Stok diset: (%d, %d)", tx, ty)) end
     print(string.format("[PnB UI] 📦 Pos Stok diatur ke: (%d, %d)", tx, ty))
-end)
-
-doorBtn.MouseButton1Click:Connect(function()
-    elevate()
-    local tx, ty = getAccurateTilePos()
-    state.doorPos = {x = tx, y = ty}
-    if genv.AutoBreakCustom then genv.AutoBreakCustom.DoorPos = state.doorPos end
-    updatePosUI()
-    if updateStatusLabel then updateStatusLabel(string.format("🚪 Pos Door diset: (%d, %d)", tx, ty)) end
-    print(string.format("[PnB UI] 🚪 Pos Door diatur ke: (%d, %d)", tx, ty))
 end)
 
 local function applyManualStand()
@@ -4220,19 +4145,6 @@ local function applyManualStock()
 end
 stockXInput.FocusLost:Connect(applyManualStock)
 stockYInput.FocusLost:Connect(applyManualStock)
-
-local function applyManualDoor()
-    elevate()
-    local nx = tonumber(doorXInput.Text)
-    local ny = tonumber(doorYInput.Text)
-    if nx and ny then
-        state.doorPos = {x = math.floor(nx), y = math.floor(ny)}
-        if genv.AutoBreakCustom then genv.AutoBreakCustom.DoorPos = state.doorPos end
-        updatePosUI()
-    end
-end
-doorXInput.FocusLost:Connect(applyManualDoor)
-doorYInput.FocusLost:Connect(applyManualDoor)
 end
 
 -- ================== FITUR AUTO REJOIN & RESUME WORLD ==================
@@ -4240,7 +4152,7 @@ do
 local rejoinFrame = Instance.new("Frame")
 rejoinFrame.Name = "RejoinFrame"
 rejoinFrame.Size = UDim2.new(1, -24, 0, 72)
-rejoinFrame.Position = UDim2.fromOffset(12, 608)
+rejoinFrame.Position = UDim2.fromOffset(12, 582)
 rejoinFrame.BackgroundTransparency = 1
 rejoinFrame.Parent = scrollFrame
 
@@ -4333,7 +4245,7 @@ end)
 
 local shieldLabel = Instance.new("TextLabel")
 shieldLabel.Size = UDim2.new(1, -24, 0, 16)
-shieldLabel.Position = UDim2.fromOffset(12, 688)
+shieldLabel.Position = UDim2.fromOffset(12, 662)
 shieldLabel.Text = "🛡️ Shield: Anti-AFK (20m) + Anti-Staff"
 shieldLabel.TextColor3 = Color3.fromRGB(52, 211, 153)
 shieldLabel.Font = Enum.Font.GothamMedium
@@ -4344,7 +4256,7 @@ shieldLabel.Parent = scrollFrame
 
 local footer = Instance.new("TextLabel")
 footer.Size = UDim2.new(1, -24, 0, 16)
-footer.Position = UDim2.fromOffset(12, 708)
+footer.Position = UDim2.fromOffset(12, 682)
 footer.Text = "Auto Claim: 100% Instan Tanpa Gerak (Per-Balok)"
 footer.TextColor3 = Color3.fromRGB(120, 125, 140)
 footer.Font = Enum.Font.Gotham
