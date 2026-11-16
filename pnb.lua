@@ -45,6 +45,16 @@ end
 
 local r = require 
 local getconns = (getconnections or get_connections or function(...) return {} end) 
+local function getSafeUpvalue(fn, idx)
+    if not fn or typeof(fn) ~= "function" then return nil end
+    local ok, a, b = pcall(debug.getupvalue, fn, idx)
+    if not ok then return nil end
+    if type(b) == "number" then return b end
+    if type(a) == "number" then return a end
+    return b or a
+end
+
+ 
 
 -- =========================================================================
 -- 🛡️ BULLETPROOF ANTI-AFK & AUTO-RECONNECT ENGINE (100% UNBEATABLE)
@@ -137,22 +147,8 @@ end
 
 local WorldRemotes = ReplicatedStorage:FindFirstChild("WorldRemotes") 
 
-local function isValidWorld(w)
-    if type(w) ~= "table" then return false end
-    if not rawget(w, "fg") or not rawget(w, "bg") then return false end
-    local goTo = rawget(w, "goTo")
-    if typeof(goTo) ~= "function" then return false end
-    local info = debug.getinfo(goTo)
-    if not info or info.nups < 2 then return false end
-    local ok1, val1 = pcall(debug.getupvalue, goTo, 1)
-    local ok2, val2 = pcall(debug.getupvalue, goTo, 2)
-    if not ok1 or not ok2 then return false end
-    if typeof(val1) ~= "number" or typeof(val2) ~= "number" then return false end
-    return true
-end
-
 local function findWorldFromAnySource()
-    -- Priority 1: Scan RenderStepped connections (Live game step loop)
+    -- Priority 1: RenderStepped connections (Active live game step)
     if getconns and RunService then
         local ok, rConns = pcall(getconns, RunService.RenderStepped)
         if ok and rConns then
@@ -161,11 +157,14 @@ local function findWorldFromAnySource()
                 if fn and typeof(fn) == "function" then
                     for i = 1, debug.getinfo(fn).nups do
                         local up = debug.getupvalue(fn, i)
-                        if isValidWorld(up) then return up end
-                        if typeof(up) == "function" then
+                        if type(up) == "table" and rawget(up, "fg") and rawget(up, "bg") and rawget(up, "goTo") then
+                            return up
+                        elseif typeof(up) == "function" then
                             for j = 1, debug.getinfo(up).nups do
                                 local inUp = debug.getupvalue(up, j)
-                                if isValidWorld(inUp) then return inUp end
+                                if type(inUp) == "table" and rawget(inUp, "fg") and rawget(inUp, "bg") and rawget(inUp, "goTo") then
+                                    return inUp
+                                end
                             end
                         end
                     end
@@ -186,7 +185,9 @@ local function findWorldFromAnySource()
                         if fn and typeof(fn) == "function" then
                             for i = 1, debug.getinfo(fn).nups do
                                 local up = debug.getupvalue(fn, i)
-                                if isValidWorld(up) then return up end
+                                if type(up) == "table" and rawget(up, "fg") and rawget(up, "bg") and rawget(up, "goTo") then
+                                    return up
+                                end
                             end
                         end
                     end
@@ -195,7 +196,19 @@ local function findWorldFromAnySource()
         end
     end
 
-    -- Priority 3: Active closures from getgc(false) (hit, setTile, plantSeed)
+    -- Priority 3: Scan getgc(true) matching the proven Growblox engine signature
+    if getgc then
+        local ok, gcList = pcall(getgc, true)
+        if ok and type(gcList) == "table" then
+            for _, v in ipairs(gcList) do
+                if type(v) == "table" and rawget(v, "fg") and rawget(v, "bg") and rawget(v, "goTo") and rawget(v, "touchBlocks") then
+                    return v
+                end
+            end
+        end
+    end
+
+    -- Priority 4: Active closures from getgc(false) (hit, setTile, plantSeed)
     if getgc then
         local ok, fns = pcall(getgc, false)
         if ok and type(fns) == "table" then
@@ -204,20 +217,12 @@ local function findWorldFromAnySource()
                     local name = debug.getinfo(fn).name
                     if name == "hit" or name == "setTile" or name == "plantSeed" then
                         for _, up in ipairs(debug.getupvalues(fn)) do
-                            if isValidWorld(up) then return up end
+                            if type(up) == "table" and rawget(up, "fg") and rawget(up, "bg") and rawget(up, "goTo") then
+                                return up
+                            end
                         end
                     end
                 end
-            end
-        end
-    end
-
-    -- Priority 4: getgc(true) tables filtered strictly through isValidWorld
-    if getgc then
-        local ok, gcList = pcall(getgc, true)
-        if ok and type(gcList) == "table" then
-            for _, v in ipairs(gcList) do
-                if isValidWorld(v) then return v end
             end
         end
     end
@@ -1924,9 +1929,9 @@ end
 local function getLivePos()
     local w = World or findWorldFromAnySource()
     if not w or not w.goTo then return nil, nil end
-    local ok1, x = pcall(debug.getupvalue, w.goTo, 1)
-    local ok2, y = pcall(debug.getupvalue, w.goTo, 2)
-    if ok1 and type(x) == "number" and ok2 and type(y) == "number" then
+    local x = getSafeUpvalue(w.goTo, 1)
+    local y = getSafeUpvalue(w.goTo, 2)
+    if type(x) == "number" and type(y) == "number" then
         return x, y
     end
     return nil, nil
@@ -1953,14 +1958,17 @@ local function startPnBWorker()
         end
 
         rehookWorldPointers()
+        local w = World or findWorldFromAnySource()
+        if w then World = w end
         local startAnchorX = 0
         local startAnchorY = 0
-        if isValidWorld(World) then
-            local ok1, val1 = pcall(debug.getupvalue, World.goTo, 1)
-            local ok2, val2 = pcall(debug.getupvalue, World.goTo, 2)
-            if ok1 and typeof(val1) == "number" then startAnchorX = val1 end
-            if ok2 and typeof(val2) == "number" then startAnchorY = val2 end
-        elseif state.standPos then
+        if w and w.goTo then
+            local x = getSafeUpvalue(w.goTo, 1)
+            local y = getSafeUpvalue(w.goTo, 2)
+            if type(x) == "number" then startAnchorX = x end
+            if type(y) == "number" then startAnchorY = y end
+        end
+        if startAnchorX == 0 and startAnchorY == 0 and state.standPos then
             startAnchorX = state.standPos.x + 0.50
             startAnchorY = state.standPos.y + 0.99
         end
@@ -2001,7 +2009,7 @@ local function startPnBWorker()
 
         -- 🛡️ Kalibrasi posisi berdiri tepat di tengah tile (anchorTileX + 0.50)
         local safeAnchorX = anchorTileX + 0.50
-        local liveStartX = (debug.getupvalue(World.goTo, 1)) or safeAnchorX
+        local liveStartX = (World and World.goTo and getSafeUpvalue(World.goTo, 1)) or safeAnchorX
         if math.abs(liveStartX - safeAnchorX) > 0.10 then
             local alignKey = (liveStartX < safeAnchorX) and Enum.KeyCode.D or Enum.KeyCode.A
             local alignTimeout = os.clock() + 0.20
@@ -3960,23 +3968,21 @@ end
 -- =========================================================================
 local function getAccurateTilePos()
     elevate()
-    if not isValidWorld(World) then
-        local fresh = findWorldFromAnySource()
-        if fresh then World = fresh end
-    end
-    if isValidWorld(World) then
-        local ok1, curX = pcall(debug.getupvalue, World.goTo, 1)
-        local ok2, curY = pcall(debug.getupvalue, World.goTo, 2)
-        if ok1 and ok2 and typeof(curX) == "number" and typeof(curY) == "number" then
+    local w = World or findWorldFromAnySource()
+    if w then World = w end
+    if w and w.goTo then
+        local curX = getSafeUpvalue(w.goTo, 1)
+        local curY = getSafeUpvalue(w.goTo, 2)
+        if type(curX) == "number" and type(curY) == "number" then
             return math.floor(curX), math.floor(curY)
         end
     end
     if hitFn then
         for _, up in ipairs(debug.getupvalues(hitFn)) do
-            if isValidWorld(up) then
-                local ok1, curX = pcall(debug.getupvalue, up.goTo, 1)
-                local ok2, curY = pcall(debug.getupvalue, up.goTo, 2)
-                if ok1 and ok2 and typeof(curX) == "number" and typeof(curY) == "number" then
+            if type(up) == "table" and rawget(up, "goTo") then
+                local curX = getSafeUpvalue(up.goTo, 1)
+                local curY = getSafeUpvalue(up.goTo, 2)
+                if type(curX) == "number" and type(curY) == "number" then
                     return math.floor(curX), math.floor(curY)
                 end
             end
